@@ -1,0 +1,58 @@
+{{- if and .Values.presidio.analyzer.enabled (include "pseudonymizer.analyzer.needsConfig" .) }}
+{{- $orgs := .Values.presidio.analyzer.organizations -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pseudonymizer.analyzer.fullname" . }}-config
+  labels:
+    {{- include "pseudonymizer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: presidio-analyzer
+data:
+  {{- if .Values.presidio.analyzer.nerOrganization }}
+  # NLP config with ORGANIZATION detection ENABLED (Presidio ships it off).
+  default.yaml: |
+    nlp_engine_name: spacy
+    models:
+      -
+        lang_code: en
+        model_name: en_core_web_lg
+    ner_model_configuration:
+      model_to_presidio_entity_mapping:
+        PER: PERSON
+        PERSON: PERSON
+        NORP: NRP
+        FAC: LOCATION
+        LOC: LOCATION
+        GPE: LOCATION
+        LOCATION: LOCATION
+        ORG: ORGANIZATION
+        ORGANIZATION: ORGANIZATION
+        DATE: DATE_TIME
+        TIME: DATE_TIME
+      low_confidence_score_multiplier: 0.4
+      low_score_entity_names:
+      -
+      # ORGANIZATION intentionally NOT ignored here.
+      labels_to_ignore:
+      - CARDINAL
+      - EVENT
+      - LANGUAGE
+      - LAW
+      - MONEY
+      - ORDINAL
+      - PERCENT
+      - PRODUCT
+      - QUANTITY
+      - WORK_OF_ART
+  {{- end }}
+  {{- if gt (len $orgs) 0 }}
+  {{- $lines := list "" "  - name: \"Known organizations\"" "    supported_languages:" "      - en" "    supported_entity: \"ORGANIZATION\"" "    type: custom" "    deny_list_score: 0.9" "    deny_list:" -}}
+  {{- range $orgs -}}
+  {{- $lines = append $lines (printf "      - %s" (. | toString)) -}}
+  {{- end -}}
+  {{- $denylist := join "\n" $lines -}}
+  # Full recognizer registry (predefined) + exact-match organization deny-list.
+  default_recognizers.yaml: |
+{{ printf "%s%s" (.Files.Get "files/recognizers-base.yaml") $denylist | indent 4 }}
+  {{- end }}
+{{- end }}

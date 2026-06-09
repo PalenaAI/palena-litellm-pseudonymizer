@@ -1,0 +1,14 @@
+{
+  "name": "palena-litellm-pseudonymizer-docs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "vitepress": "^1.6.4"
+  }
+}

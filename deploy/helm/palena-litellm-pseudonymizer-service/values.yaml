@@ -1,0 +1,157 @@
+# Default values for palena-litellm-pseudonymizer-service.
+
+# -- Number of guardrail service replicas (ignored when autoscaling.enabled).
+replicaCount: 2
+
+image:
+  repository: ghcr.io/palenaai/palena-litellm-pseudonymizer
+  # -- Overrides the image tag (defaults to .Chart.AppVersion).
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# -- Resource requests/limits for the guardrail service.
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: "1"
+    memory: 256Mi
+
+# ---------------------------------------------------------------------------
+# Guardrail behaviour → PALENA_PSEUDONYMIZER_* env vars. See docs/CONFIG.md.
+# ---------------------------------------------------------------------------
+config:
+  logLevel: info          # debug | info | warn | error
+  logFormat: json         # json | text
+  scoreThreshold: 0.7
+  # LOCATION is intentionally excluded by default (city drift). Add it back
+  # here if you need geography masking.
+  entities: "PERSON,ORGANIZATION"
+  language: en
+  decomposePersonNames: true
+  maxRequestBytes: 33554432
+  session:
+    metadataKey: session_id
+    ttlSeconds: 3600
+  nonText:
+    piiAction: redact     # redact | block | passthrough
+    maxImageBytes: 20971520
+    maxImagesPerRequest: 20
+  # Pseudonym pools. Empty lists fall back to the service's built-in
+  # defaults (gender-neutral persons + neutral orgs). Provide a
+  # comma-free YAML list to override.
+  pools:
+    person: []
+    organization: []
+    location: []
+
+# -- Shared-secret API key clients must send as `x-api-key`. When disabled
+#    the service accepts any request (dev mode).
+apiKey:
+  enabled: false
+  # Provide a value to have the chart create a Secret, OR reference an
+  # existing Secret with existingSecret/existingSecretKey.
+  value: ""
+  existingSecret: ""
+  existingSecretKey: api-key
+
+# ---------------------------------------------------------------------------
+# Redis (session mapping store).
+# ---------------------------------------------------------------------------
+redis:
+  # -- Bundle a single-instance Redis. Disable and set `url` to use your own
+  #    (managed Redis strongly recommended for production).
+  enabled: true
+  # External URL when enabled=false, e.g. redis://my-redis:6379/0
+  url: ""
+  keyPrefix: "palena:pseudonymizer"
+  image: redis:7-alpine
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+  # -- Bundled Redis is ephemeral by default. Enable for a PVC.
+  persistence:
+    enabled: false
+    size: 1Gi
+    storageClass: ""
+
+# ---------------------------------------------------------------------------
+# Presidio (external PII detection).
+# ---------------------------------------------------------------------------
+presidio:
+  analyzer:
+    # -- Bundle Presidio Analyzer. Disable and set `url` to use your own.
+    enabled: true
+    url: ""   # external URL when enabled=false, e.g. http://presidio-analyzer:3000
+    image: mcr.microsoft.com/presidio-analyzer:latest
+    # -- ORGANIZATION detection via spaCy NER. ON by default so orgs are
+    #    masked even when no deny-list is configured. spaCy ORG is somewhat
+    #    noisy (occasional false positives) — set false to rely solely on
+    #    the deny-list below.
+    nerOrganization: true
+    # -- Optional exact-match list of known organization names (zero false
+    #    positives, high precision). Complements NER. When non-empty the
+    #    chart mounts a full recognizer registry with this deny-list added.
+    #    Populate with your real client/company names.
+    organizations: []
+    #   - Novartis
+    #   - Roche
+    #   - Contoso Ltd
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "2", memory: 2Gi }
+  imageRedactor:
+    # -- Bundle Presidio Image Redactor. Disable and set `url` for your own.
+    enabled: true
+    url: ""   # external URL when enabled=false
+    image: mcr.microsoft.com/presidio-image-redactor:latest
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "2", memory: 2Gi }
+
+# ---------------------------------------------------------------------------
+# Scaling / availability / observability (all optional).
+# ---------------------------------------------------------------------------
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+# -- Pod-level knobs.
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+nodeSelector: {}
+tolerations: []
+affinity: {}

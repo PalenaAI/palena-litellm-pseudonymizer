@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pseudonymizer.fullname" . }}-env
+  labels:
+    {{- include "pseudonymizer.labels" . | nindent 4 }}
+data:
+  PALENA_PSEUDONYMIZER_HTTP_ADDR: ":{{ .Values.service.port }}"
+  PALENA_PSEUDONYMIZER_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  PALENA_PSEUDONYMIZER_LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  PALENA_PSEUDONYMIZER_MAX_REQUEST_BYTES: {{ .Values.config.maxRequestBytes | quote }}
+  # Presidio
+  PALENA_PSEUDONYMIZER_PRESIDIO_ANALYZER_URL: {{ include "pseudonymizer.analyzerURL" . | quote }}
+  PALENA_PSEUDONYMIZER_PRESIDIO_IMAGE_REDACTOR_URL: {{ include "pseudonymizer.imageRedactorURL" . | quote }}
+  PALENA_PSEUDONYMIZER_PRESIDIO_SCORE_THRESHOLD: {{ .Values.config.scoreThreshold | quote }}
+  PALENA_PSEUDONYMIZER_PRESIDIO_ENTITIES: {{ .Values.config.entities | quote }}
+  PALENA_PSEUDONYMIZER_PRESIDIO_LANGUAGE: {{ .Values.config.language | quote }}
+  # Redis
+  PALENA_PSEUDONYMIZER_REDIS_URL: {{ include "pseudonymizer.redisURL" . | quote }}
+  PALENA_PSEUDONYMIZER_REDIS_KEY_PREFIX: {{ .Values.redis.keyPrefix | quote }}
+  PALENA_PSEUDONYMIZER_REDIS_SESSION_TTL_SECONDS: {{ .Values.config.session.ttlSeconds | quote }}
+  # Session / text
+  PALENA_PSEUDONYMIZER_SESSION_METADATA_KEY: {{ .Values.config.session.metadataKey | quote }}
+  PALENA_PSEUDONYMIZER_DECOMPOSE_PERSON_NAMES: {{ .Values.config.decomposePersonNames | quote }}
+  # Non-text content
+  PALENA_PSEUDONYMIZER_NON_TEXT_PII_ACTION: {{ .Values.config.nonText.piiAction | quote }}
+  PALENA_PSEUDONYMIZER_MAX_IMAGE_BYTES: {{ .Values.config.nonText.maxImageBytes | quote }}
+  PALENA_PSEUDONYMIZER_MAX_IMAGES_PER_REQUEST: {{ .Values.config.nonText.maxImagesPerRequest | quote }}
+  {{- with .Values.config.pools.person }}
+  PALENA_PSEUDONYMIZER_POOL_PERSON: {{ join "," . | quote }}
+  {{- end }}
+  {{- with .Values.config.pools.organization }}
+  PALENA_PSEUDONYMIZER_POOL_ORGANIZATION: {{ join "," . | quote }}
+  {{- end }}
+  {{- with .Values.config.pools.location }}
+  PALENA_PSEUDONYMIZER_POOL_LOCATION: {{ join "," . | quote }}
+  {{- end }}
