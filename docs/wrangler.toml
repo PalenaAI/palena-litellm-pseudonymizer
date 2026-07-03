@@ -1,4 +1,4 @@
-name = "palena-pseudonymizer"
+name = "palena-litellm-pseudonymizer"
 compatibility_date = "2025-04-01"
 
 [assets]

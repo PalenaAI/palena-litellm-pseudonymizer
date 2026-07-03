@@ -375,8 +375,18 @@ jobs:
           SYFT_VERSION: "1.18.0"
         run: |
           set -euo pipefail
-          curl -sfL "https://raw.githubusercontent.com/anchore/syft/v${SYFT_VERSION}/install.sh" \
-            | sh -s -- -b /usr/local/bin "v${SYFT_VERSION}"
+          curl -sfLo /tmp/syft.tgz \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          curl -sfLo /tmp/syft_checksums.txt \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_checksums.txt"
+          expected=$(grep "syft_${SYFT_VERSION}_linux_amd64.tar.gz" /tmp/syft_checksums.txt | awk '{print $1}')
+          actual=$(sha256sum /tmp/syft.tgz | awk '{print $1}')
+          if [ "$expected" != "$actual" ]; then
+            echo "syft checksum mismatch: expected=$expected actual=$actual" >&2
+            exit 1
+          fi
+          tar -xzf /tmp/syft.tgz -C /tmp syft
+          sudo install -m 0755 /tmp/syft /usr/local/bin/syft
           syft version
 
       - name: Generate CycloneDX SBOM
