@@ -1,6 +1,10 @@
 # Copyright (c) 2026 bitkaio LLC. All rights reserved.
 # Licensed under the Apache License, Version 2.0. See LICENSE for details.
-FROM golang:1.22-alpine AS build
+# Build with the latest patched Go (not just go.mod's 1.24 minimum): the
+# compiled binary embeds the toolchain's stdlib, so an older Go bakes in
+# stdlib CVEs that Trivy then flags. The 1.26-alpine tag tracks the newest
+# 1.26 patch (Renovate keeps it current).
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
