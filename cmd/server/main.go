@@ -74,10 +74,15 @@ func run() error {
 	// token (<CREDIT_CARD_1>) for structured PII — per-entity configurable.
 	pools := text.NewPools(cfg.PoolsMap())
 	strategizer := text.NewStrategizer(text.StrategizerConfig{
-		Pools:     pools,
-		Overrides: cfg.StrategyOverrides(),
-		Default:   cfg.EntityStrategyDefault,
+		Pools:               pools,
+		Overrides:           cfg.StrategyOverrides(),
+		Default:             cfg.EntityStrategyDefault,
+		DeterministicSecret: cfg.DeterministicSecret,
 	})
+
+	// Terms that are never pseudonymized (brand names, public figures,
+	// words Presidio over-tags). Shared by the text and image handlers.
+	allowList := cfg.AllowListSet()
 
 	// Text handler
 	textHandler := text.NewHandler(text.HandlerConfig{
@@ -87,6 +92,7 @@ func run() error {
 		Entities:             cfg.Entities,
 		Language:             cfg.Language,
 		DecomposePersonNames: cfg.DecomposePersonNames,
+		AllowList:            allowList,
 	})
 
 	// Image handler
@@ -104,6 +110,7 @@ func run() error {
 		MaxImageBytes:        cfg.MaxImageBytes,
 		MaxImagesPerRequest:  cfg.MaxImagesPerRequest,
 		DecomposePersonNames: cfg.DecomposePersonNames,
+		AllowList:            allowList,
 	})
 
 	// Orchestrator (text + optional image)
@@ -118,12 +125,21 @@ func run() error {
 		APIKey:          cfg.APIKey,
 	})
 
+	// Session admin (erasure). Shares the guardrail's shared secret.
+	sessions := httpapi.NewSessionsHandler(httpapi.SessionsHandlerConfig{
+		Store:   store,
+		APIKey:  cfg.APIKey,
+		Timeout: cfg.RedisTimeout,
+		Logger:  logger,
+	})
+
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(collectors.NewGoCollector())
 	registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	router := httpapi.NewRouter(httpapi.RouterConfig{
 		Handler:             guardrail,
+		SessionsHandler:     sessions,
 		Store:               store,
 		ImageRedactorPinger: imageRedactor,
 		ReadinessTimeout:    cfg.PresidioReadiness,

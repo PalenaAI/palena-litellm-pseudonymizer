@@ -66,6 +66,51 @@ Country-specific IDs (national identity cards, insurance numbers) usually need a
 the [organization deny-list](/guide/organization-detection).
 :::
 
+## Allow-list
+
+Terms that should **never** be pseudonymized, even when Presidio detects them:
+
+```bash
+PALENA_PSEUDONYMIZER_ALLOW_LIST=Palena,Acme Rockets,Ada Lovelace
+```
+
+Matched case-insensitively against the detected span. Use it for:
+
+- **your own brand / product names** — you don't want "Palena" swapped for a
+  fake org in every prompt;
+- **public figures or well-known entities** that carry no client PII;
+- **words Presidio over-tags** — e.g. the generic NER tagging "SSN" as an
+  `ORGANIZATION` (a false positive you saw in testing).
+
+It's the symmetric counterpart to the organization
+[deny-list](/guide/organization-detection): the deny-list *adds* detections,
+the allow-list *suppresses* them. Allow-listed terms are also excluded from
+first/last-name decomposition, so an allow-listed surname never leaks a
+sub-mapping.
+
+## Deterministic pseudonyms
+
+By default a real name gets the next free pool pseudonym per session, so the
+same person may map to different pseudonyms in different conversations. Set a
+secret to make pool assignment **deterministic** — the same real value maps to
+the same pool pseudonym across every session:
+
+```bash
+PALENA_PSEUDONYMIZER_DETERMINISTIC_SECRET=<random-secret>
+```
+
+The pseudonym is chosen by a keyed `HMAC-SHA256(secret, name)` over the pool,
+probing forward on a within-session collision. This gives **stable, portable
+pseudonyms** — useful when you correlate pseudonymized data across sessions or
+want reproducibility after a Redis flush. Trade-offs:
+
+- Reversal still uses the session store (HMAC is one-way) — this changes
+  *which* pseudonym is picked, not whether state is stored.
+- Cross-session determinism means a fixed name↔pseudonym relationship, i.e.
+  less per-session unlinkability. Only enable it if that's what you want.
+- Applies to the **pool** strategy only; token entities keep their per-session
+  counter. Treat the secret like any other credential.
+
 ## Pseudonym pools
 
 Each entity type draws pseudonyms from a pool:
@@ -122,3 +167,19 @@ PALENA_PSEUDONYMIZER_API_KEY=<shared-secret>
 When set, clients (i.e. the LiteLLM proxy) must send it as an `x-api-key`
 header. When empty, the service accepts any request — fine for a private
 in-cluster deployment, not for an exposed one.
+
+## Session erasure
+
+Mappings expire on their own via the Redis TTL, but you can erase one on demand
+— e.g. to honour a GDPR right-to-erasure request or tear down a finished
+conversation:
+
+```bash
+curl -X DELETE http://pseudonymizer:8080/sessions/<session_id> \
+  -H "x-api-key: $PALENA_PSEUDONYMIZER_API_KEY"
+```
+
+Returns `200 {"deleted": true|false}` — `deleted` reports whether a mapping
+existed (the call is idempotent). The endpoint is guarded by the same
+`API_KEY` shared secret as the guardrail endpoint; leave the key unset only in
+a trusted, in-cluster deployment.

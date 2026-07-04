@@ -53,6 +53,21 @@ type Config struct {
 	EntityStrategy        []string `envconfig:"ENTITY_STRATEGY"`
 	EntityStrategyDefault string   `envconfig:"ENTITY_STRATEGY_DEFAULT" default:"token"`
 
+	// AllowList is a set of terms that are NEVER pseudonymized even when
+	// Presidio detects them — your own brand/product names, public figures,
+	// and words Presidio over-tags ("SSN" as an ORGANIZATION, etc.). Matched
+	// case-insensitively against the detected span text. The symmetric
+	// counterpart to the organization deny-list.
+	AllowList []string `envconfig:"ALLOW_LIST"`
+
+	// DeterministicSecret, when set, switches POOL assignment from a
+	// per-session counter to a keyed HMAC of the real value: the same real
+	// name maps to the same pool pseudonym across every session (stable,
+	// reproducible pseudonyms). Reversal still uses the session store. Empty
+	// (default) keeps the sequential, per-session pool assignment.
+	// Token-strategy entities are unaffected. Treat this like a secret.
+	DeterministicSecret string `envconfig:"DETERMINISTIC_SECRET"`
+
 	// Redis
 	RedisURL       string        `envconfig:"REDIS_URL" default:"redis://redis:6379/0"`
 	SessionTTL     time.Duration `envconfig:"REDIS_SESSION_TTL_SECONDS" default:"3600s"`
@@ -133,6 +148,19 @@ func (c *Config) StrategyOverrides() map[string]string {
 			continue
 		}
 		out[strings.TrimSpace(k)] = strings.ToLower(strings.TrimSpace(v))
+	}
+	return out
+}
+
+// AllowListSet returns the allow-list as a set of lower-cased, trimmed
+// terms for O(1) case-insensitive lookup. Empty entries are dropped.
+func (c *Config) AllowListSet() map[string]struct{} {
+	out := make(map[string]struct{}, len(c.AllowList))
+	for _, term := range c.AllowList {
+		t := strings.ToLower(strings.TrimSpace(term))
+		if t != "" {
+			out[t] = struct{}{}
+		}
 	}
 	return out
 }

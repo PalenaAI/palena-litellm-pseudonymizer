@@ -39,22 +39,40 @@ func TestStrategyFor_DefaultPool(t *testing.T) {
 
 func TestAssign_PoolForPerson(t *testing.T) {
 	s := newStrategizer(nil, "token")
-	got := s.Assign("PERSON", "Alice Johnson", map[string]string{})
+	got := s.Assign("PERSON", "Alice Johnson", map[string]string{}, "")
 	require.Equal(t, "Alpha", got)
 }
 
 func TestAssign_TokenForStructured(t *testing.T) {
 	s := newStrategizer(nil, "token")
 	scratch := map[string]string{}
-	c1 := s.Assign("CREDIT_CARD", "4111111111111111", scratch)
+	c1 := s.Assign("CREDIT_CARD", "4111111111111111", scratch, "")
 	require.Equal(t, "<CREDIT_CARD_1>", c1)
 	scratch["4111111111111111"] = c1
-	c2 := s.Assign("CREDIT_CARD", "5555444433332222", scratch)
+	c2 := s.Assign("CREDIT_CARD", "5555444433332222", scratch, "")
 	require.Equal(t, "<CREDIT_CARD_2>", c2)
 	// A different type gets its own counter.
 	scratch["5555444433332222"] = c2
-	ssn := s.Assign("US_SSN", "078-05-1120", scratch)
+	ssn := s.Assign("US_SSN", "078-05-1120", scratch, "")
 	require.Equal(t, "<US_SSN_1>", ssn)
+}
+
+func TestAssign_TokenSkipsReserved(t *testing.T) {
+	s := newStrategizer(nil, "token")
+	// The input already contains "<CREDIT_CARD_1>"; a fresh card must skip it.
+	got := s.Assign("CREDIT_CARD", "4111111111111111", map[string]string{}, "ref <credit_card_1> here")
+	require.Equal(t, "<CREDIT_CARD_2>", got)
+}
+
+func TestStrategizer_Deterministic_StableAcrossScratch(t *testing.T) {
+	s := NewStrategizer(StrategizerConfig{
+		Pools:               NewPools(map[string][]string{"PERSON": {"Alpha", "Beta", "Gamma", "Delta"}}),
+		Default:             "pool",
+		DeterministicSecret: "key",
+	})
+	a := s.Assign("PERSON", "Alice Johnson", map[string]string{}, "")
+	b := s.Assign("PERSON", "Alice Johnson", map[string]string{}, "")
+	require.Equal(t, a, b) // deterministic: same real → same pseudonym
 }
 
 func TestTokenPrefix_NormalizesCustomTypes(t *testing.T) {

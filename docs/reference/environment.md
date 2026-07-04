@@ -43,6 +43,8 @@ startup and exits on invalid values.
 | --- | --- | --- |
 | `SESSION_METADATA_KEY` | `session_id` | Metadata field read for the session id. |
 | `DECOMPOSE_PERSON_NAMES` | `true` | Register first/last-name sub-mappings. |
+| `ALLOW_LIST` | *(empty)* | Comma-separated terms **never pseudonymized** even when detected — brand/product names, public figures, words Presidio over-tags. Case-insensitive. See [Configuration → Allow-list](/guide/configuration#allow-list). |
+| `DETERMINISTIC_SECRET` | *(empty)* | When set, pool assignment uses a keyed HMAC of the real value so the same name maps to the same pseudonym **across sessions**. Token entities unaffected. Treat as a secret. See [Configuration → Deterministic pseudonyms](/guide/configuration#deterministic-pseudonyms). |
 | `POOL_PERSON` | *(unisex names)* | Comma-separated person pseudonyms. |
 | `POOL_ORGANIZATION` | *(neutral orgs)* | Comma-separated org pseudonyms. |
 | `POOL_LOCATION` | *(neutral places)* | Used only if `LOCATION` is enabled. |

@@ -24,6 +24,7 @@ data:
   # Session / text
   PALENA_PSEUDONYMIZER_SESSION_METADATA_KEY: {{ .Values.config.session.metadataKey | quote }}
   PALENA_PSEUDONYMIZER_DECOMPOSE_PERSON_NAMES: {{ .Values.config.decomposePersonNames | quote }}
+  PALENA_PSEUDONYMIZER_ALLOW_LIST: {{ .Values.config.allowList | quote }}
   # Non-text content
   PALENA_PSEUDONYMIZER_NON_TEXT_PII_ACTION: {{ .Values.config.nonText.piiAction | quote }}
   PALENA_PSEUDONYMIZER_MAX_IMAGE_BYTES: {{ .Values.config.nonText.maxImageBytes | quote }}

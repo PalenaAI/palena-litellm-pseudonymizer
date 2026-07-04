@@ -26,6 +26,11 @@ type Store interface {
 	// Derived from GetMapping on the fly.
 	GetReverseMapping(ctx context.Context, sessionID string) (map[string]string, error)
 
+	// Delete removes a session's mapping entirely (GDPR right-to-erasure /
+	// explicit session teardown). Returns whether a mapping existed. Deleting
+	// a non-existent session is not an error (idempotent).
+	Delete(ctx context.Context, sessionID string) (existed bool, err error)
+
 	// Ping verifies the store is reachable. Called by /readyz.
 	Ping(ctx context.Context) error
 

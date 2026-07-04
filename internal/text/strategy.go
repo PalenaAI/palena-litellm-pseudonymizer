@@ -37,9 +37,10 @@ var nominalTypes = map[string]struct{}{
 // Strategizer assigns a pseudonym to a newly-detected entity, dispatching
 // on the per-entity substitution strategy.
 type Strategizer struct {
-	pools    *Pools
-	byEntity map[string]Strategy // explicit per-type overrides
-	def      Strategy            // fallback for non-nominal, non-overridden types
+	pools     *Pools
+	byEntity  map[string]Strategy // explicit per-type overrides
+	def       Strategy            // fallback for non-nominal, non-overridden types
+	detSecret []byte              // when set, pool assignment is deterministic (HMAC)
 }
 
 // StrategizerConfig groups constructor parameters.
@@ -47,6 +48,10 @@ type StrategizerConfig struct {
 	Pools     *Pools
 	Overrides map[string]string // entityType -> "pool"|"token"
 	Default   string            // "pool"|"token"; empty -> "token"
+	// DeterministicSecret, when non-empty, switches pool assignment to a
+	// keyed HMAC of the real value so the same real name yields the same
+	// pool pseudonym across sessions. Token assignment is unaffected.
+	DeterministicSecret string
 }
 
 // NewStrategizer builds a Strategizer.
@@ -63,7 +68,11 @@ func NewStrategizer(cfg StrategizerConfig) *Strategizer {
 	if pools == nil {
 		pools = NewPools(nil)
 	}
-	return &Strategizer{pools: pools, byEntity: byEntity, def: def}
+	var secret []byte
+	if cfg.DeterministicSecret != "" {
+		secret = []byte(cfg.DeterministicSecret)
+	}
+	return &Strategizer{pools: pools, byEntity: byEntity, def: def, detSecret: secret}
 }
 
 // StrategyFor resolves the strategy for an entity type: explicit override
@@ -79,14 +88,26 @@ func (s *Strategizer) StrategyFor(entityType string) Strategy {
 }
 
 // Assign returns a pseudonym for a newly-detected entity of entityType.
+//
 // scratch is the session's current real→pseudonym mapping plus any
 // assignments made earlier in this request; it is used to avoid collisions
 // (pool) and to compute the next token index (token).
-func (s *Strategizer) Assign(entityType, real string, scratch map[string]string) string {
+//
+// reserved is a lower-cased haystack (typically the surrounding input text)
+// that the chosen pseudonym must NOT be a substring of. This prevents a
+// freshly-minted pseudonym from aliasing a string a user or the model
+// already typed — e.g. a user who literally wrote "<CREDIT_CARD_1>", or a
+// pool name that already appears in the text — which would otherwise make
+// the reverse pass ambiguous. Pass "" to disable the check.
+func (s *Strategizer) Assign(entityType, real string, scratch map[string]string, reserved string) string {
 	if s.StrategyFor(entityType) == StrategyToken {
-		return nextToken(entityType, scratch)
+		return nextToken(entityType, scratch, reserved)
 	}
-	return s.pools.Assign(entityType, usedFromMap(scratch))
+	used := usedFromMap(scratch)
+	if s.detSecret != nil {
+		return s.pools.AssignDeterministic(entityType, real, used, reserved, s.detSecret)
+	}
+	return s.pools.Assign(entityType, used, reserved)
 }
 
 // tokenRE matches a token pseudonym like "<CREDIT_CARD_12>" and captures
@@ -112,8 +133,10 @@ func tokenPrefix(entityType string) string {
 
 // nextToken returns the next unused "<PREFIX_N>" token for entityType,
 // scanning scratch for the current max index of this prefix. Tokens are
-// unique by construction, so no collision check is needed.
-func nextToken(entityType string, scratch map[string]string) string {
+// unique by construction; the only extra check is `reserved`, which lets us
+// skip an index whose rendered token literally appears in the input (a user
+// who typed "<CREDIT_CARD_1>" must not collide with a real card we assign).
+func nextToken(entityType string, scratch map[string]string, reserved string) string {
 	prefix := tokenPrefix(entityType)
 	maxN := 0
 	for _, v := range scratch {
@@ -125,7 +148,21 @@ func nextToken(entityType string, scratch map[string]string) string {
 			maxN = n
 		}
 	}
-	return fmt.Sprintf("<%s_%d>", prefix, maxN+1)
+	for n := maxN + 1; ; n++ {
+		tok := fmt.Sprintf("<%s_%d>", prefix, n)
+		if !reservedContains(reserved, tok) {
+			return tok
+		}
+	}
+}
+
+// reservedContains reports whether candidate (case-insensitively) appears in
+// the lower-cased reserved haystack. Empty reserved always returns false.
+func reservedContains(reserved, candidate string) bool {
+	if reserved == "" {
+		return false
+	}
+	return strings.Contains(reserved, strings.ToLower(candidate))
 }
 
 // isToken reports whether s is one of our token pseudonyms. Used by the

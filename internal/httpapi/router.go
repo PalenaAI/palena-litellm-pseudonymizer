@@ -26,6 +26,7 @@ type Pinger interface {
 // RouterConfig groups the router's inputs.
 type RouterConfig struct {
 	Handler             *Handler
+	SessionsHandler     *SessionsHandler
 	Store               mapping.Store
 	AnalyzerPinger      Pinger
 	ImageRedactorPinger Pinger
@@ -89,6 +90,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	if cfg.Handler != nil {
 		r.Post("/beta/litellm_basic_guardrail_api", cfg.Handler.ServeHTTP)
+	}
+
+	if cfg.SessionsHandler != nil {
+		r.Delete("/sessions/{session_id}", cfg.SessionsHandler.Delete)
 	}
 
 	return r

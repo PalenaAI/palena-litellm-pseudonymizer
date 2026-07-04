@@ -102,6 +102,50 @@ func TestHandler_StructuredPII_TokenizedAndReversed(t *testing.T) {
 	require.Equal(t, "Confirmed 4111111111111111 for Alice Johnson, SSN 078-05-1120.", got)
 }
 
+// newAllowListHandler enables an allow-list of never-pseudonymized terms.
+func newAllowListHandler(t *testing.T, stub *stubAnalyzer, allow map[string]struct{}) (*Handler, mapping.Store) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := mapping.NewRedisStoreFromClient(client, mapping.Config{SessionTTL: time.Minute, Timeout: time.Second}, nil)
+	h := NewHandler(HandlerConfig{
+		Analyzer:  stub,
+		Store:     store,
+		Pools:     NewPools(map[string][]string{"ORGANIZATION": {"Acme Corp"}}),
+		Entities:  []string{"ORGANIZATION"},
+		AllowList: allow,
+	})
+	return h, store
+}
+
+func TestHandler_AllowList_NotPseudonymized(t *testing.T) {
+	// "SSN" is a common word the NER over-tags as ORGANIZATION; allow-list it.
+	stub := &stubAnalyzer{detections: []presidio.Detection{
+		{EntityType: "ORGANIZATION", Text: "Northwind Labs", Score: 0.9},
+		{EntityType: "ORGANIZATION", Text: "SSN", Score: 0.6},
+	}}
+	h, _ := newAllowListHandler(t, stub, map[string]struct{}{"ssn": {}})
+	res, err := h.Pseudonymize(context.Background(), "The SSN for Northwind Labs is on file.", "s1")
+	require.NoError(t, err)
+	// Northwind Labs is pooled; the allow-listed "SSN" stays verbatim.
+	require.Equal(t, "The SSN for Acme Corp is on file.", res.Text)
+	require.Equal(t, 1, res.EntitiesDetected)
+}
+
+// A user who literally types a token like "<CREDIT_CARD_1>" must not collide
+// with a real value we tokenize in the same text — collision hardening.
+func TestHandler_CollisionReservedTokenAvoided(t *testing.T) {
+	stub := &stubAnalyzer{detections: []presidio.Detection{
+		{EntityType: "CREDIT_CARD", Text: "4111111111111111", Score: 1.0},
+	}}
+	h, _ := newStructuredHandler(t, stub)
+	res, err := h.Pseudonymize(context.Background(),
+		"See ref <CREDIT_CARD_1>; charge card 4111111111111111.", "s1")
+	require.NoError(t, err)
+	// Real card must skip the reserved index 1 and become _2.
+	require.Equal(t, "See ref <CREDIT_CARD_1>; charge card <CREDIT_CARD_2>.", res.Text)
+}
+
 func TestHandler_HigherScoreClassificationWins(t *testing.T) {
 	// Same span reported as both CREDIT_CARD (1.0) and ORGANIZATION (0.85);
 	// the credit-card classification must win so it tokenizes, not pools.

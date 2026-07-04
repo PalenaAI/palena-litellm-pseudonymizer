@@ -30,6 +30,7 @@ type Handler struct {
 	entities  []string
 	language  string
 	decompose bool
+	allowList map[string]struct{} // lower-cased terms never pseudonymized
 }
 
 // HandlerConfig groups constructor parameters.
@@ -49,6 +50,9 @@ type HandlerConfig struct {
 	// bare first/last-name references stay consistent with the
 	// full-name pseudonym. See ComponentMappings.
 	DecomposePersonNames bool
+	// AllowList holds lower-cased terms that are never pseudonymized even
+	// when Presidio detects them. See Config.AllowListSet.
+	AllowList map[string]struct{}
 }
 
 // NewHandler builds a text handler. All fields are required except
@@ -71,6 +75,7 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		entities:  cfg.Entities,
 		language:  lang,
 		decompose: cfg.DecomposePersonNames,
+		allowList: cfg.AllowList,
 	}
 }
 
@@ -108,6 +113,7 @@ func (h *Handler) Pseudonymize(ctx context.Context, text, sessionID string) (*Ps
 		return nil, err
 	}
 	filtered := filterByEntityType(detections, h.entities)
+	filtered = h.filterAllowList(filtered)
 	res.EntitiesDetected = len(filtered)
 
 	for _, d := range filtered {
@@ -128,7 +134,7 @@ func (h *Handler) Pseudonymize(ctx context.Context, text, sessionID string) (*Ps
 		return nil, err
 	}
 
-	newMappings := h.assignNew(filtered, existing)
+	newMappings := h.assignNew(filtered, existing, strings.ToLower(text))
 	res.NewMappingsCreated = len(newMappings)
 
 	var merged map[string]string
@@ -208,7 +214,10 @@ func (h *Handler) ReverseStream(ctx context.Context, texts []string, sessionID s
 // assignNew selects pseudonyms for detections not already in the
 // session mapping. Sorted longest-first, then alphabetical, so compound
 // names get assigned before their components inside one request.
-func (h *Handler) assignNew(detections []presidio.Detection, existing map[string]string) map[string]string {
+//
+// reserved is the lower-cased source text; a newly-minted pseudonym is
+// never allowed to be a substring of it (collision hardening).
+func (h *Handler) assignNew(detections []presidio.Detection, existing map[string]string, reserved string) map[string]string {
 	// De-dup by text (case-preserving) — one entity name → one mapping.
 	// When the same span is classified as multiple types (e.g. a card
 	// number tagged both CREDIT_CARD and, by a noisy NER, ORGANIZATION),
@@ -255,7 +264,7 @@ func (h *Handler) assignNew(detections []presidio.Detection, existing map[string
 		if hasCaseInsensitiveKey(scratch, d.Text) {
 			continue
 		}
-		p := h.strat.Assign(d.EntityType, d.Text, scratch)
+		p := h.strat.Assign(d.EntityType, d.Text, scratch, reserved)
 		newMap[d.Text] = p
 		scratch[d.Text] = p
 
@@ -265,6 +274,9 @@ func (h *Handler) assignNew(detections []presidio.Detection, existing map[string
 		// a component already mapped for another person is left alone.
 		if h.decompose && d.EntityType == "PERSON" {
 			for cReal, cPseudo := range ComponentMappings(d.Text, p) {
+				if _, ok := h.allowList[strings.ToLower(cReal)]; ok {
+					continue // component is allow-listed (e.g. a brand surname)
+				}
 				if _, ok := scratch[cReal]; ok {
 					continue
 				}
@@ -292,6 +304,24 @@ func filterByEntityType(detections []presidio.Detection, allowed []string) []pre
 		if _, ok := set[d.EntityType]; ok {
 			out = append(out, d)
 		}
+	}
+	return out
+}
+
+// filterAllowList drops detections whose span text is on the allow-list
+// (case-insensitive). These terms are never pseudonymized — brand/product
+// names, public figures, or words Presidio over-tags. No-op when the
+// allow-list is empty.
+func (h *Handler) filterAllowList(detections []presidio.Detection) []presidio.Detection {
+	if len(h.allowList) == 0 {
+		return detections
+	}
+	out := make([]presidio.Detection, 0, len(detections))
+	for _, d := range detections {
+		if _, ok := h.allowList[strings.ToLower(strings.TrimSpace(d.Text))]; ok {
+			continue
+		}
+		out = append(out, d)
 	}
 	return out
 }

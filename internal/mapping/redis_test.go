@@ -44,6 +44,26 @@ func TestRedisStore_AddThenGet(t *testing.T) {
 	require.Equal(t, merged, loaded)
 }
 
+func TestRedisStore_Delete(t *testing.T) {
+	s, _ := newStore(t)
+	ctx := context.Background()
+	_, err := s.AddMappings(ctx, "s1", map[string]string{"Novartis": "Acme Corp"})
+	require.NoError(t, err)
+
+	existed, err := s.Delete(ctx, "s1")
+	require.NoError(t, err)
+	require.True(t, existed)
+
+	m, err := s.GetMapping(ctx, "s1")
+	require.NoError(t, err)
+	require.Empty(t, m)
+
+	// Deleting again is idempotent — no error, existed=false.
+	existed, err = s.Delete(ctx, "s1")
+	require.NoError(t, err)
+	require.False(t, existed)
+}
+
 func TestRedisStore_ExistingWinsOnMerge(t *testing.T) {
 	s, _ := newStore(t)
 	ctx := context.Background()

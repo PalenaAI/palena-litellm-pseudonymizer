@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Allow-list of never-pseudonymized terms** (`ALLOW_LIST`) — your brand /
+  product names, public figures, or words Presidio over-tags (e.g. "SSN" as an
+  organization) are left verbatim even when detected. Case-insensitive; also
+  excluded from first/last-name decomposition. Symmetric to the org deny-list.
+  Applies to text and OCR'd image entities.
+- **Deterministic pseudonyms** (`DETERMINISTIC_SECRET`) — optional keyed-HMAC
+  pool assignment so the same real name maps to the same pseudonym across
+  sessions (stable, portable pseudonyms). Token entities unaffected. Wired as a
+  Kubernetes Secret in the Helm chart.
+- **Session erasure endpoint** — `DELETE /sessions/{session_id}` removes a
+  session's mapping on demand (GDPR right-to-erasure / explicit teardown),
+  guarded by the same `x-api-key` shared secret. Idempotent; returns
+  `{"deleted": true|false}`.
+
+### Changed
+
+- **Collision hardening** — a freshly-assigned pseudonym is never allowed to be
+  a substring of the text it is inserted into, so a user- or model-supplied
+  lookalike (e.g. someone literally typing `<CREDIT_CARD_1>`, or a pool name
+  already present in the text) can no longer alias a real value and make the
+  reverse pass ambiguous. Token indices and pool candidates are skipped until a
+  non-colliding one is found.
+
 ## [0.2.0] - 2026-07-04
 
 ### Added

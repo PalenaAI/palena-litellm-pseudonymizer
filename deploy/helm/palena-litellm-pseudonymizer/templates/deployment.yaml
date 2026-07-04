@@ -55,6 +55,18 @@ spec:
                   key: api-key
                   {{- end }}
             {{- end }}
+            {{- if .Values.deterministic.enabled }}
+            - name: PALENA_PSEUDONYMIZER_DETERMINISTIC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.deterministic.existingSecret }}
+                  name: {{ .Values.deterministic.existingSecret }}
+                  key: {{ .Values.deterministic.existingSecretKey }}
+                  {{- else }}
+                  name: {{ include "pseudonymizer.fullname" . }}-deterministic
+                  key: deterministic-secret
+                  {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

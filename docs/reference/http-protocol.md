@@ -80,3 +80,9 @@ reserves `500` for its own errors.
 | `GET /healthz` | Liveness — 200 while the process is up. |
 | `GET /readyz` | Readiness — checks Redis + Presidio; 503 if a dependency is down. |
 | `GET /metrics` | Prometheus metrics. |
+
+## Session administration
+
+| Endpoint | Purpose |
+| --- | --- |
+| `DELETE /sessions/{session_id}` | Erase a session's real↔pseudonym mapping (GDPR right-to-erasure / explicit teardown). Guarded by the `x-api-key` shared secret. Returns `200 {"deleted": true\|false}`; idempotent. |

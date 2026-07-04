@@ -51,6 +51,9 @@ config:
   entityStrategyDefault: token
   entityStrategy: ""
   decomposePersonNames: true
+  # Terms never pseudonymized even when detected (your brand/product names,
+  # public figures, words Presidio over-tags). Comma-separated, case-insensitive.
+  allowList: ""
   maxRequestBytes: 33554432
   session:
     metadataKey: session_id
@@ -76,6 +79,15 @@ apiKey:
   value: ""
   existingSecret: ""
   existingSecretKey: api-key
+
+# -- Deterministic pseudonyms: when enabled, pool assignment uses a keyed HMAC
+#    so the same real name maps to the same pseudonym across sessions. Secret-
+#    grade; wired as a Secret just like apiKey.
+deterministic:
+  enabled: false
+  value: ""
+  existingSecret: ""
+  existingSecretKey: deterministic-secret
 
 # ---------------------------------------------------------------------------
 # Redis (session mapping store).

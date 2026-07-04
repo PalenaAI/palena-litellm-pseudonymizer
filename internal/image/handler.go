@@ -39,13 +39,13 @@ type Redactor interface {
 // here to avoid an import cycle (text imports mapping, so image would
 // too if we depended on text directly).
 type PoolAssigner interface {
-	Assign(entityType string, used map[string]struct{}) string
+	Assign(entityType string, used map[string]struct{}, reserved string) string
 }
 
 // Strategist is the subset of *text.Strategizer the image handler uses:
 // assign a pseudonym for an OCR'd entity, dispatching pool vs token.
 type Strategist interface {
-	Assign(entityType, real string, scratch map[string]string) string
+	Assign(entityType, real string, scratch map[string]string, reserved string) string
 }
 
 // HandlerConfig groups constructor parameters.
@@ -67,6 +67,10 @@ type HandlerConfig struct {
 	// DecomposePersonNames mirrors the text handler option: register
 	// first/last-name sub-mappings for OCR'd PERSON entities.
 	DecomposePersonNames bool
+	// AllowList holds lower-cased terms never pseudonymized, matching the
+	// text handler. An OCR'd name on the allow-list is not shared into the
+	// session mapping (but the image is still redacted per PIIAction).
+	AllowList map[string]struct{}
 }
 
 // Handler orchestrates image PII detection + redaction.
@@ -299,17 +303,21 @@ func (h *Handler) shareWithMapping(ctx context.Context, sessionID string, detect
 
 	for _, d := range sorted {
 		real := strings.TrimSpace(d.Text)
+		if _, ok := h.cfg.AllowList[strings.ToLower(real)]; ok {
+			continue // never pseudonymize an allow-listed name
+		}
 		if _, ok := scratch[real]; ok {
 			continue
 		}
 		if hasCaseInsensitiveKey(scratch, real) {
 			continue
 		}
+		// No surrounding text for OCR'd entities, so no reserved haystack.
 		var p string
 		if h.cfg.Strategizer != nil {
-			p = h.cfg.Strategizer.Assign(d.EntityType, real, scratch)
+			p = h.cfg.Strategizer.Assign(d.EntityType, real, scratch, "")
 		} else {
-			p = h.cfg.Pools.Assign(d.EntityType, usedSet(scratch))
+			p = h.cfg.Pools.Assign(d.EntityType, usedSet(scratch), "")
 		}
 		newMap[real] = p
 		scratch[real] = p

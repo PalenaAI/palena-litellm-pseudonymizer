@@ -218,6 +218,19 @@ func (s *RedisStore) AddMappings(ctx context.Context, sessionID string, newMappi
 	return out, nil
 }
 
+// Delete removes the session's hash entirely. Idempotent — deleting a
+// missing key returns existed=false with no error.
+func (s *RedisStore) Delete(ctx context.Context, sessionID string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	n, err := s.client.Del(ctx, s.key(sessionID)).Result()
+	if err != nil {
+		return false, errs.Wrap(errs.ErrMappingStoreUnavailable, "del %s", s.key(sessionID))
+	}
+	return n > 0, nil
+}
+
 // GetReverseMapping loads the forward mapping and inverts it in memory.
 func (s *RedisStore) GetReverseMapping(ctx context.Context, sessionID string) (map[string]string, error) {
 	fwd, err := s.GetMapping(ctx, sessionID)

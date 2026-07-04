@@ -46,7 +46,7 @@ type simplePools struct {
 	next map[string][]string
 }
 
-func (p *simplePools) Assign(entityType string, used map[string]struct{}) string {
+func (p *simplePools) Assign(entityType string, used map[string]struct{}, _ string) string {
 	for _, name := range p.next[entityType] {
 		if _, taken := used[name]; !taken {
 			return name
