@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/errs"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
 )
 
 // ImageDetection is one entity Presidio Image Redactor found. When the

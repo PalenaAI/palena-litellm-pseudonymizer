@@ -7,7 +7,7 @@ dependencies.
 
 ```bash
 helm install pseudonymizer \
-  ./deploy/helm/palena-litellm-pseudonymizer-service \
+  ./deploy/helm/palena-litellm-pseudonymizer \
   --namespace guardrails --create-namespace
 ```
 

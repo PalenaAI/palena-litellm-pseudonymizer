@@ -13,7 +13,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/errs"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
 )
 
 // Config controls the Redis client + session TTL / key prefix.

@@ -19,6 +19,10 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/palenaai/palena-litellm-pseudonymizer
+  CHART_DIR: deploy/helm/palena-litellm-pseudonymizer
+  CHART_NAME: palena-litellm-pseudonymizer
+  # OCI namespace for the packaged chart (kept separate from the image repo).
+  CHART_OCI_REPO: ghcr.io/palenaai/charts
 
 jobs:
 
@@ -246,6 +250,101 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  publish-chart:
+    name: Package & Publish Helm Chart
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout the repository
+      packages: write # push the OCI chart to GHCR
+      id-token: write # keyless cosign signing via GitHub OIDC
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Helm
+        env:
+          HELM_VERSION: "3.17.3"
+        run: |
+          set -euo pipefail
+          curl -sfLo /tmp/helm.tgz \
+            "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz"
+          curl -sfLo /tmp/helm.sha256 \
+            "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz.sha256sum"
+          expected=$(awk '{print $1}' /tmp/helm.sha256)
+          actual=$(sha256sum /tmp/helm.tgz | awk '{print $1}')
+          if [ "$expected" != "$actual" ]; then
+            echo "helm checksum mismatch: expected=$expected actual=$actual" >&2
+            exit 1
+          fi
+          tar -xzf /tmp/helm.tgz -C /tmp linux-amd64/helm
+          sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+          helm version
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          cosign-release: "v2.5.3"
+
+      - name: Login to GHCR (Helm OCI registry)
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "${GHCR_TOKEN}" | helm registry login "${REGISTRY}" \
+            --username "${{ github.actor }}" --password-stdin
+
+      - name: Package chart
+        env:
+          VERSION: ${{ needs.build-and-publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Pin both chart version and appVersion to the release tag so the
+          # published artifact tag always equals the git tag.
+          helm package "${CHART_DIR}" \
+            --version "${VERSION}" \
+            --app-version "${VERSION}" \
+            --destination dist
+          ls -l dist
+
+      - name: Push chart to GHCR
+        id: push
+        env:
+          VERSION: ${{ needs.build-and-publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          out=$(helm push "dist/${CHART_NAME}-${VERSION}.tgz" "oci://${CHART_OCI_REPO}" 2>&1)
+          echo "${out}"
+          digest=$(printf '%s\n' "${out}" | awk '/[Dd]igest:/ {print $2}')
+          if [ -z "${digest}" ]; then
+            echo "could not parse chart digest from helm push output" >&2
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign chart (keyless, OIDC)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          COSIGN_YES: "true"
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${CHART_OCI_REPO}/${CHART_NAME}@${DIGEST}"
+
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: helm-chart
+          path: dist/*.tgz
+          if-no-files-found: error
+          retention-days: 90
+
   # SLSA Level 3 provenance for the container image. Reusable workflows must be
   # referenced by tag (the SLSA generator pins internal actions for us and only
   # accepts tag references).
@@ -266,7 +365,7 @@ jobs:
 
   github-release:
     name: GitHub Release
-    needs: [build-and-publish, sign-and-attest, provenance]
+    needs: [build-and-publish, sign-and-attest, provenance, publish-chart]
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub Release and upload release assets
@@ -288,12 +387,19 @@ jobs:
           name: release-assets
           path: release-assets
 
+      - name: Download packaged Helm chart
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: helm-chart
+          path: release-assets
+
       - name: Extract changelog section for this tag
         id: changelog
         env:
           VERSION: ${{ needs.build-and-publish.outputs.version }}
           IMAGE: ${{ env.IMAGE_NAME }}
           DIGEST: ${{ needs.build-and-publish.outputs.digest }}
+          CHART_REPO: ${{ env.CHART_OCI_REPO }}/${{ env.CHART_NAME }}
         run: |
           set -euo pipefail
 
@@ -307,6 +413,7 @@ jobs:
           version = os.environ["VERSION"]
           image = os.environ["IMAGE"]
           digest = os.environ["DIGEST"]
+          chart_repo = os.environ["CHART_REPO"]
           repository = os.environ.get("GITHUB_REPOSITORY", "PalenaAI/palena-litellm-pseudonymizer")
 
           with open("CHANGELOG.md", "r", encoding="utf-8") as fh:
@@ -339,6 +446,10 @@ jobs:
               "### Container image\n\n"
               f"- `{image}:{version}`\n"
               f"- Digest: `{digest}`\n\n"
+              "### Helm chart\n\n"
+              f"- OCI: `oci://{chart_repo}` (tag `{version}`)\n"
+              f"- Install: `helm install pseudonymizer oci://{chart_repo} --version {version}`\n"
+              f"- Signed with Sigstore keyless (cosign); also attached below as `.tgz`.\n\n"
               "### Supply-chain artifacts\n\n"
               "- CycloneDX SBOM: `sbom.cdx.json` (attached + cosign attestation)\n"
               "- SPDX SBOM: `sbom.spdx.json` (attached)\n"
@@ -373,3 +484,4 @@ jobs:
             release-assets/sbom.cdx.json
             release-assets/sbom.spdx.json
             release-assets/trivy-report.json
+            release-assets/*.tgz

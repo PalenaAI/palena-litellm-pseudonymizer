@@ -1,4 +1,4 @@
-# palena-litellm-pseudonymizer-service Helm chart
+# palena-litellm-pseudonymizer Helm chart
 
 Deploys the pseudonymization guardrail into Kubernetes, optionally bundling
 its Redis and Presidio (Analyzer + Image Redactor) dependencies.
@@ -6,7 +6,7 @@ its Redis and Presidio (Analyzer + Image Redactor) dependencies.
 ## Install
 
 ```bash
-helm install pseudonymizer ./deploy/helm/palena-litellm-pseudonymizer-service \
+helm install pseudonymizer ./deploy/helm/palena-litellm-pseudonymizer \
   --namespace guardrails --create-namespace
 ```
 

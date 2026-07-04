@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/errs"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
 )
 
 func newImageRedactor(t *testing.T, h http.HandlerFunc) *ImageRedactor {

@@ -11,10 +11,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/audit"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/errs"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/image"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/text"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/audit"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/image"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/text"
 )
 
 // InputType matches PROTOCOL.md § "input_type". Kept as its own type

@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/audit"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/errs"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/pseudonymizer"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/session"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/audit"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/pseudonymizer"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/session"
 )
 
 // Handler is the /beta/litellm_basic_guardrail_api endpoint.

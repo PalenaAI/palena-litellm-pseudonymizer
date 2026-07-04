@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/mapping"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/mapping"
 )
 
 // Pinger is the subset of a dependency needed for the readiness probe.

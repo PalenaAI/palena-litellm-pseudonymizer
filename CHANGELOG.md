@@ -69,7 +69,7 @@ Initial release.
 - **No-PII audit invariant** — structured logs and Prometheus metrics carry
   counts and entity-type labels only, never real names or pseudonyms; session
   ids appear only as short hashes.
-- **Helm chart** (`deploy/helm/palena-litellm-pseudonymizer-service`) deploying
+- **Helm chart** (`deploy/helm/palena-litellm-pseudonymizer`) deploying
   the service with optional bundled Redis and Presidio. Organization detection
   is on by default (spaCy NER) with an optional exact-match deny-list of known
   company names for high precision.

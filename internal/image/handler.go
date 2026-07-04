@@ -12,11 +12,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/audit"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/errs"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/mapping"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/presidio"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/text"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/audit"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/mapping"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/presidio"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/text"
 )
 
 // PIIAction mirrors config.PIIAction.

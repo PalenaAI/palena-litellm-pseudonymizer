@@ -1,4 +1,4 @@
-# Default values for palena-litellm-pseudonymizer-service.
+# Default values for palena-litellm-pseudonymizer.
 
 # -- Number of guardrail service replicas (ignored when autoscaling.enabled).
 replicaCount: 2

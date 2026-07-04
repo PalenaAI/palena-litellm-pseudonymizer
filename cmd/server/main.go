@@ -1,7 +1,7 @@
 // Copyright (c) 2026 bitkaio LLC. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE for details.
 
-// Command server is the entrypoint for palena-litellm-pseudonymizer-service.
+// Command server is the entrypoint for palena-litellm-pseudonymizer.
 // See context/PROTOCOL.md for the HTTP contract and CLAUDE.md for the
 // operating rules.
 package main
@@ -20,13 +20,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/config"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/httpapi"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/image"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/mapping"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/presidio"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/pseudonymizer"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/text"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/config"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/httpapi"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/image"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/mapping"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/presidio"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/pseudonymizer"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/text"
 )
 
 func main() {

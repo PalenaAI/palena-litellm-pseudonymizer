@@ -13,8 +13,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/mapping"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/presidio"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/mapping"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/presidio"
 )
 
 type stubAnalyzer struct {

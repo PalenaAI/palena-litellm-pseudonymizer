@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/audit"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/mapping"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/presidio"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/audit"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/mapping"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/presidio"
 )
 
 // Analyzer is the subset of *presidio.Analyzer the text handler needs.

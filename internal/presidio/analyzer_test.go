@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/errs"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
 )
 
 func newAnalyzerServer(t *testing.T, h http.HandlerFunc) *Analyzer {

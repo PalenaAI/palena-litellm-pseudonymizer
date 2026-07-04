@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/errs"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
 )
 
 // Detection is one entity returned by Presidio Analyzer.

@@ -1,4 +1,4 @@
-module github.com/bitkaio/palena-litellm-pseudonymizer-service
+module github.com/bitkaio/palena-litellm-pseudonymizer
 
 go 1.24
 

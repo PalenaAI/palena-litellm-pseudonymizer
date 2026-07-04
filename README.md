@@ -56,11 +56,11 @@ organization detection on by default:
 
 ```bash
 helm install pseudonymizer \
-  ./deploy/helm/palena-litellm-pseudonymizer-service \
+  ./deploy/helm/palena-litellm-pseudonymizer \
   --namespace guardrails --create-namespace
 ```
 
-See [deploy/helm/palena-litellm-pseudonymizer-service](deploy/helm/palena-litellm-pseudonymizer-service/README.md).
+See [deploy/helm/palena-litellm-pseudonymizer](deploy/helm/palena-litellm-pseudonymizer/README.md).
 
 ## Documentation
 

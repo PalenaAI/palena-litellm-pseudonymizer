@@ -19,11 +19,11 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/errs"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/mapping"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/presidio"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/pseudonymizer"
-	"github.com/bitkaio/palena-litellm-pseudonymizer-service/internal/text"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/mapping"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/presidio"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/pseudonymizer"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/text"
 )
 
 type stubAnalyzer struct {
