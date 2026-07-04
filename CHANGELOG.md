@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-04
+
 ### Added
 
 - **Optional structured-PII pseudonymization** — any entity type Presidio
@@ -79,5 +81,6 @@ Initial release.
   scanning with SBOM, cosign keyless signing, SLSA Level 3 provenance, and
   OpenSSF Scorecard.
 
-[Unreleased]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/releases/tag/v0.1.0
