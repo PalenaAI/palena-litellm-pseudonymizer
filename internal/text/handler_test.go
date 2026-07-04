@@ -63,6 +63,58 @@ func newDecomposingHandler(t *testing.T, stub *stubAnalyzer) (*Handler, mapping.
 	return h, store
 }
 
+// newStructuredHandler enables token substitution for structured PII.
+func newStructuredHandler(t *testing.T, stub *stubAnalyzer) (*Handler, mapping.Store) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := mapping.NewRedisStoreFromClient(client, mapping.Config{SessionTTL: time.Minute, Timeout: time.Second}, nil)
+	strat := NewStrategizer(StrategizerConfig{
+		Pools:   NewPools(map[string][]string{"PERSON": {"Jordan Avery"}}),
+		Default: "token",
+	})
+	h := NewHandler(HandlerConfig{
+		Analyzer:    stub,
+		Store:       store,
+		Strategizer: strat,
+		Entities:    []string{"PERSON", "CREDIT_CARD", "US_SSN"},
+	})
+	return h, store
+}
+
+func TestHandler_StructuredPII_TokenizedAndReversed(t *testing.T) {
+	stub := &stubAnalyzer{detections: []presidio.Detection{
+		{EntityType: "PERSON", Text: "Alice Johnson", Score: 0.9},
+		{EntityType: "CREDIT_CARD", Text: "4111111111111111", Score: 1.0},
+		{EntityType: "US_SSN", Text: "078-05-1120", Score: 0.95},
+	}}
+	h, _ := newStructuredHandler(t, stub)
+	res, err := h.Pseudonymize(context.Background(),
+		"Charge Alice Johnson card 4111111111111111 SSN 078-05-1120.", "s1")
+	require.NoError(t, err)
+	// Person -> pool name; structured PII -> tokens.
+	require.Equal(t, "Charge Jordan Avery card <CREDIT_CARD_1> SSN <US_SSN_1>.", res.Text)
+
+	// Reversal restores all of them verbatim.
+	got, err := h.Reverse(context.Background(),
+		"Confirmed <CREDIT_CARD_1> for Jordan Avery, SSN <US_SSN_1>.", "s1")
+	require.NoError(t, err)
+	require.Equal(t, "Confirmed 4111111111111111 for Alice Johnson, SSN 078-05-1120.", got)
+}
+
+func TestHandler_HigherScoreClassificationWins(t *testing.T) {
+	// Same span reported as both CREDIT_CARD (1.0) and ORGANIZATION (0.85);
+	// the credit-card classification must win so it tokenizes, not pools.
+	stub := &stubAnalyzer{detections: []presidio.Detection{
+		{EntityType: "ORGANIZATION", Text: "4111111111111111", Score: 0.85},
+		{EntityType: "CREDIT_CARD", Text: "4111111111111111", Score: 1.0},
+	}}
+	h, _ := newStructuredHandler(t, stub)
+	res, err := h.Pseudonymize(context.Background(), "Card 4111111111111111.", "s1")
+	require.NoError(t, err)
+	require.Equal(t, "Card <CREDIT_CARD_1>.", res.Text)
+}
+
 func TestHandler_Decompose_FullThenBareFirstNameReverses(t *testing.T) {
 	stub := &stubAnalyzer{detections: []presidio.Detection{
 		{EntityType: "PERSON", Text: "Alice Johnson", Score: 0.9},

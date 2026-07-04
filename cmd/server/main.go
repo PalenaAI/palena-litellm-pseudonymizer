@@ -70,12 +70,20 @@ func run() error {
 		ScoreThreshold: cfg.ScoreThreshold,
 	})
 
-	// Text handler
+	// Substitution strategy: pool (fictional names) for nominal identities,
+	// token (<CREDIT_CARD_1>) for structured PII — per-entity configurable.
 	pools := text.NewPools(cfg.PoolsMap())
+	strategizer := text.NewStrategizer(text.StrategizerConfig{
+		Pools:     pools,
+		Overrides: cfg.StrategyOverrides(),
+		Default:   cfg.EntityStrategyDefault,
+	})
+
+	// Text handler
 	textHandler := text.NewHandler(text.HandlerConfig{
 		Analyzer:             analyzer,
 		Store:                store,
-		Pools:                pools,
+		Strategizer:          strategizer,
 		Entities:             cfg.Entities,
 		Language:             cfg.Language,
 		DecomposePersonNames: cfg.DecomposePersonNames,
@@ -89,7 +97,7 @@ func run() error {
 	imageHandler := image.NewHandler(image.HandlerConfig{
 		Redactor:             imageRedactor,
 		Store:                store,
-		Pools:                pools,
+		Strategizer:          strategizer,
 		Entities:             cfg.Entities,
 		PIIAction:            image.PIIAction(cfg.PIIAction),
 		BlockMessageTmpl:     cfg.BlockMessage,

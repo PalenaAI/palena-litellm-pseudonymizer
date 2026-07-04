@@ -166,6 +166,15 @@ func isWordContextRune(r rune) bool {
 //
 // Non-letter characters in `source` are ignored when judging the pattern.
 func matchCase(source, replacement string) string {
+	// Token pseudonyms (<CREDIT_CARD_1>) are exact stand-ins — never
+	// case-transform when either side is a token:
+	//   - forward (real -> token): emit the token verbatim, don't lowercase
+	//     it just because the real value (e.g. an email) was lowercase;
+	//   - reverse (token -> real): emit the real value verbatim, don't
+	//     uppercase it to match the token's case.
+	if isToken(source) || isToken(replacement) {
+		return replacement
+	}
 	hasLetter := false
 	allUpper := true
 	allLower := true

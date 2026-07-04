@@ -42,11 +42,21 @@ type PoolAssigner interface {
 	Assign(entityType string, used map[string]struct{}) string
 }
 
+// Strategist is the subset of *text.Strategizer the image handler uses:
+// assign a pseudonym for an OCR'd entity, dispatching pool vs token.
+type Strategist interface {
+	Assign(entityType, real string, scratch map[string]string) string
+}
+
 // HandlerConfig groups constructor parameters.
 type HandlerConfig struct {
-	Redactor            Redactor
-	Store               mapping.Store
-	Pools               PoolAssigner
+	Redactor Redactor
+	Store    mapping.Store
+	// Pools is the fallback substitution path when Strategizer is nil.
+	Pools PoolAssigner
+	// Strategizer, when set, selects per-entity substitution (pool vs
+	// token) for OCR'd entities — matching the text pipeline.
+	Strategizer         Strategist
 	Entities            []string
 	PIIAction           PIIAction
 	BlockMessageTmpl    string // must contain "{entity_types}"
@@ -295,7 +305,12 @@ func (h *Handler) shareWithMapping(ctx context.Context, sessionID string, detect
 		if hasCaseInsensitiveKey(scratch, real) {
 			continue
 		}
-		p := h.cfg.Pools.Assign(d.EntityType, usedSet(scratch))
+		var p string
+		if h.cfg.Strategizer != nil {
+			p = h.cfg.Strategizer.Assign(d.EntityType, real, scratch)
+		} else {
+			p = h.cfg.Pools.Assign(d.EntityType, usedSet(scratch))
+		}
 		newMap[real] = p
 		scratch[real] = p
 

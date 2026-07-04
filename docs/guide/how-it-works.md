@@ -14,10 +14,14 @@ LLM sees: "Please book Jordan Avery a trip."
 ```
 
 1. **Detect** — the text is sent to Presidio Analyzer, which returns the spans
-   it recognises as `PERSON` / `ORGANIZATION`.
-2. **Assign** — each new name gets a pseudonym from a configured pool. Existing
-   assignments are reused, so the same real name always maps to the same
-   pseudonym within a session.
+   it recognises as `PERSON` / `ORGANIZATION` (or any other
+   [enabled entity type](/guide/configuration#entities)).
+2. **Assign** — each new value gets a stand-in. Nominal identities (person /
+   organization / location) draw a fictional name from a configured pool;
+   structured PII (credit cards, SSNs, emails, IDs) gets a reversible token like
+   `<CREDIT_CARD_1>` — see [Substitution strategy](/guide/configuration#substitution-strategy).
+   Existing assignments are reused, so the same real value always maps to the
+   same stand-in within a session.
 3. **Persist** — the `real → pseudonym` mapping is stored in Redis, scoped to
    the conversation's session id.
 4. **Rewrite** — the text is rewritten and forwarded to the model.

@@ -38,10 +38,18 @@ config:
   logLevel: info          # debug | info | warn | error
   logFormat: json         # json | text
   scoreThreshold: 0.7
-  # LOCATION is intentionally excluded by default (city drift). Add it back
-  # here if you need geography masking.
+  # Entity types Presidio detects & pseudonymizes. Add structured PII to
+  # opt in: e.g. "PERSON,ORGANIZATION,CREDIT_CARD,US_SSN,EMAIL_ADDRESS".
+  # LOCATION is intentionally excluded by default (city drift).
   entities: "PERSON,ORGANIZATION"
   language: en
+  # Substitution strategy. Nominal identities (PERSON/ORG/LOCATION) use
+  # realistic fake names; structured PII (cards, SSNs, emails, IDs) uses
+  # reversible tokens like <CREDIT_CARD_1>.
+  # entityStrategyDefault applies to enabled non-nominal types; entityStrategy
+  # overrides per type, e.g. "PHONE_NUMBER:pool,CREDIT_CARD:token".
+  entityStrategyDefault: token
+  entityStrategy: ""
   decomposePersonNames: true
   maxRequestBytes: 33554432
   session:

@@ -15,6 +15,8 @@ data:
   PALENA_PSEUDONYMIZER_PRESIDIO_SCORE_THRESHOLD: {{ .Values.config.scoreThreshold | quote }}
   PALENA_PSEUDONYMIZER_PRESIDIO_ENTITIES: {{ .Values.config.entities | quote }}
   PALENA_PSEUDONYMIZER_PRESIDIO_LANGUAGE: {{ .Values.config.language | quote }}
+  PALENA_PSEUDONYMIZER_ENTITY_STRATEGY_DEFAULT: {{ .Values.config.entityStrategyDefault | quote }}
+  PALENA_PSEUDONYMIZER_ENTITY_STRATEGY: {{ .Values.config.entityStrategy | quote }}
   # Redis
   PALENA_PSEUDONYMIZER_REDIS_URL: {{ include "pseudonymizer.redisURL" . | quote }}
   PALENA_PSEUDONYMIZER_REDIS_KEY_PREFIX: {{ .Values.redis.keyPrefix | quote }}

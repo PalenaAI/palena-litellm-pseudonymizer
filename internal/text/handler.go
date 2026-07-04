@@ -25,7 +25,7 @@ type Analyzer interface {
 type Handler struct {
 	analyzer  Analyzer
 	store     mapping.Store
-	pools     *Pools
+	strat     *Strategizer
 	replacer  *Replacer
 	entities  []string
 	language  string
@@ -36,9 +36,14 @@ type Handler struct {
 type HandlerConfig struct {
 	Analyzer Analyzer
 	Store    mapping.Store
-	Pools    *Pools
-	Entities []string
-	Language string
+	// Pools is used to build a default pool-only Strategizer when
+	// Strategizer is nil (keeps older callers/tests working).
+	Pools *Pools
+	// Strategizer selects the per-entity substitution strategy. When nil,
+	// a pool-only strategizer is built from Pools.
+	Strategizer *Strategizer
+	Entities    []string
+	Language    string
 	// DecomposePersonNames, when true, registers first-name and
 	// last-name sub-mappings for multi-token PERSON entities so that
 	// bare first/last-name references stay consistent with the
@@ -53,10 +58,15 @@ func NewHandler(cfg HandlerConfig) *Handler {
 	if lang == "" {
 		lang = "en"
 	}
+	strat := cfg.Strategizer
+	if strat == nil {
+		// Backward-compatible default: everything uses the pool strategy.
+		strat = NewStrategizer(StrategizerConfig{Pools: cfg.Pools, Default: string(StrategyPool)})
+	}
 	return &Handler{
 		analyzer:  cfg.Analyzer,
 		store:     cfg.Store,
-		pools:     cfg.Pools,
+		strat:     strat,
 		replacer:  NewReplacer(),
 		entities:  cfg.Entities,
 		language:  lang,
@@ -200,10 +210,16 @@ func (h *Handler) ReverseStream(ctx context.Context, texts []string, sessionID s
 // names get assigned before their components inside one request.
 func (h *Handler) assignNew(detections []presidio.Detection, existing map[string]string) map[string]string {
 	// De-dup by text (case-preserving) — one entity name → one mapping.
+	// When the same span is classified as multiple types (e.g. a card
+	// number tagged both CREDIT_CARD and, by a noisy NER, ORGANIZATION),
+	// keep the higher-scoring classification so the right strategy applies.
 	byText := make(map[string]presidio.Detection, len(detections))
 	for _, d := range detections {
 		trimmed := strings.TrimSpace(d.Text)
 		if trimmed == "" {
+			continue
+		}
+		if prev, ok := byText[trimmed]; ok && prev.Score >= d.Score {
 			continue
 		}
 		byText[trimmed] = presidio.Detection{
@@ -239,8 +255,7 @@ func (h *Handler) assignNew(detections []presidio.Detection, existing map[string
 		if hasCaseInsensitiveKey(scratch, d.Text) {
 			continue
 		}
-		used := usedFromMap(scratch)
-		p := h.pools.Assign(d.EntityType, used)
+		p := h.strat.Assign(d.EntityType, d.Text, scratch)
 		newMap[d.Text] = p
 		scratch[d.Text] = p
 

@@ -40,6 +40,19 @@ type Config struct {
 	Entities []string `envconfig:"PRESIDIO_ENTITIES" default:"PERSON,ORGANIZATION"`
 	Language string   `envconfig:"PRESIDIO_LANGUAGE" default:"en"`
 
+	// Substitution strategy per entity type. Nominal identities
+	// (PERSON/ORGANIZATION/LOCATION) default to "pool" — a realistic
+	// fictional name. Structured PII (CREDIT_CARD, US_SSN, IBAN_CODE,
+	// EMAIL_ADDRESS, custom IDs, …) defaults to "token" — a consistent,
+	// reversible placeholder like <CREDIT_CARD_1>, because a fake name for
+	// a card number is meaningless and the model rarely needs the digits.
+	//
+	// ENTITY_STRATEGY overrides per type: "CREDIT_CARD:token,PHONE_NUMBER:pool".
+	// ENTITY_STRATEGY_DEFAULT is used for any enabled type that is neither
+	// nominal nor explicitly overridden.
+	EntityStrategy        []string `envconfig:"ENTITY_STRATEGY"`
+	EntityStrategyDefault string   `envconfig:"ENTITY_STRATEGY_DEFAULT" default:"token"`
+
 	// Redis
 	RedisURL       string        `envconfig:"REDIS_URL" default:"redis://redis:6379/0"`
 	SessionTTL     time.Duration `envconfig:"REDIS_SESSION_TTL_SECONDS" default:"3600s"`
@@ -106,6 +119,24 @@ func (c *Config) PoolsMap() map[string][]string {
 	}
 }
 
+// StrategyOverrides parses ENTITY_STRATEGY ("TYPE:strategy,…") into a map.
+// Invalid entries are surfaced by Validate, not here.
+func (c *Config) StrategyOverrides() map[string]string {
+	out := map[string]string{}
+	for _, pair := range c.EntityStrategy {
+		p := strings.TrimSpace(pair)
+		if p == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(p, ":")
+		if !ok {
+			continue
+		}
+		out[strings.TrimSpace(k)] = strings.ToLower(strings.TrimSpace(v))
+	}
+	return out
+}
+
 // Validate — matches context/CONFIG.md § "Validation rules".
 func (c *Config) Validate() error {
 	if _, err := url.Parse(c.AnalyzerURL); err != nil {
@@ -122,6 +153,15 @@ func (c *Config) Validate() error {
 	}
 	if len(c.Entities) == 0 {
 		return errors.New("PRESIDIO_ENTITIES must be non-empty")
+	}
+	validStrategy := func(s string) bool { return s == "pool" || s == "token" }
+	if !validStrategy(c.EntityStrategyDefault) {
+		return fmt.Errorf("ENTITY_STRATEGY_DEFAULT must be pool|token, got %q", c.EntityStrategyDefault)
+	}
+	for t, s := range c.StrategyOverrides() {
+		if !validStrategy(s) {
+			return fmt.Errorf("ENTITY_STRATEGY for %q must be pool|token, got %q", t, s)
+		}
 	}
 	switch c.PIIAction {
 	case "redact", "block", "passthrough":

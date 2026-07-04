@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Optional structured-PII pseudonymization** — any entity type Presidio
+  detects (`CREDIT_CARD`, `US_SSN`, `IBAN_CODE`, `EMAIL_ADDRESS`,
+  `PHONE_NUMBER`, custom IDs, …) can now be enabled via
+  `PRESIDIO_ENTITIES`. Two substitution strategies:
+  - **`pool`** — realistic fictional value (unchanged behaviour for nominal
+    identities: `PERSON` / `ORGANIZATION` / `LOCATION`).
+  - **`token`** — a consistent reversible placeholder (`<CREDIT_CARD_1>`),
+    the new default for non-nominal types. Hides the value, signals the
+    redaction to the model, and reverses to the exact original.
+  - Configurable via `ENTITY_STRATEGY_DEFAULT` and per-type
+    `ENTITY_STRATEGY` overrides (`"PHONE_NUMBER:pool,CREDIT_CARD:token"`);
+    surfaced in the Helm chart. Nominal types default to `pool` regardless
+    of the default, so existing deployments are unaffected.
+
+### Fixed
+
+- Token pseudonyms are no longer case-folded by the case-preserving replacer
+  in either direction (forward masking or response reversal), so a token like
+  `<EMAIL_ADDRESS_1>` stays verbatim and reverses to the exact original value.
+
 ## [0.1.0] - 2026-06-03
 
 Initial release.

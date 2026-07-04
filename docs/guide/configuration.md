@@ -18,6 +18,54 @@ Riverside do you mean?". Person and organization names are pure identity and
 safe to swap; place names carry semantics the model needs. Add `LOCATION` back
 only if your threat model requires geography masking.
 
+You can enable **any entity type Presidio detects** — add structured PII such
+as credit cards, national IDs, emails or phone numbers:
+
+```bash
+PALENA_PSEUDONYMIZER_PRESIDIO_ENTITIES=PERSON,ORGANIZATION,CREDIT_CARD,US_SSN,EMAIL_ADDRESS
+```
+
+How each type is substituted depends on its [strategy](#substitution-strategy).
+
+## Substitution strategy
+
+Not all PII should be masked the same way. A fake *name* for a credit card is
+meaningless, and the model rarely needs the real digits — it just needs to know
+a value was there. So there are two strategies:
+
+| Strategy | Output | Right for |
+| --- | --- | --- |
+| `pool` | a realistic fictional value (`Alice Johnson` → `Jordan Avery`) | **nominal identities** the model reasons about: `PERSON`, `ORGANIZATION`, `LOCATION` |
+| `token` | a consistent reversible placeholder (`4111…` → `<CREDIT_CARD_1>`) | **structured PII**: `CREDIT_CARD`, `US_SSN`, `IBAN_CODE`, `EMAIL_ADDRESS`, phone numbers, insurance / ID numbers, custom types |
+
+```bash
+# Default strategy for enabled types that aren't nominal identities:
+PALENA_PSEUDONYMIZER_ENTITY_STRATEGY_DEFAULT=token          # token | pool
+
+# Per-type overrides (comma-separated TYPE:strategy):
+PALENA_PSEUDONYMIZER_ENTITY_STRATEGY=PHONE_NUMBER:pool,CREDIT_CARD:token
+```
+
+**Resolution order** for a given entity type:
+
+1. an explicit `ENTITY_STRATEGY` override, else
+2. `pool` if the type is `PERSON` / `ORGANIZATION` / `LOCATION`, else
+3. `ENTITY_STRATEGY_DEFAULT` (`token`).
+
+So simply adding `CREDIT_CARD` to `PRESIDIO_ENTITIES` tokenizes it
+automatically — no strategy config needed for the common case. Tokens are
+`<TYPE_N>` where `N` is a per-type, per-session counter, so the same value maps
+to the same token across a conversation and reverses back to the exact original
+(case and all).
+
+::: tip Detecting structured / country-specific PII
+Presidio recognises many types out of the box (`CREDIT_CARD`, `US_SSN`,
+`IBAN_CODE`, `EMAIL_ADDRESS`, `PHONE_NUMBER`, `US_PASSPORT`, `UK_NHS`, …).
+Country-specific IDs (national identity cards, insurance numbers) usually need a
+**custom recognizer** — add a regex or deny-list recognizer the same way you add
+the [organization deny-list](/guide/organization-detection).
+:::
+
 ## Pseudonym pools
 
 Each entity type draws pseudonyms from a pool:

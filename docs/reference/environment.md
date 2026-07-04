@@ -22,8 +22,10 @@ startup and exits on invalid values.
 | `PRESIDIO_IMAGE_REDACTOR_URL` | `http://presidio-image-redactor:5003` | Image detection service. |
 | `PRESIDIO_TIMEOUT_SECONDS` | `10` | Per-request timeout. |
 | `PRESIDIO_SCORE_THRESHOLD` | `0.7` | Minimum detection confidence, `[0,1]`. |
-| `PRESIDIO_ENTITIES` | `PERSON,ORGANIZATION` | Entity types to detect. `LOCATION` excluded by default. |
+| `PRESIDIO_ENTITIES` | `PERSON,ORGANIZATION` | Entity types to detect. Add structured PII (`CREDIT_CARD`, `US_SSN`, `EMAIL_ADDRESS`, …) to opt in. `LOCATION` excluded by default. |
 | `PRESIDIO_LANGUAGE` | `en` | Language forwarded to Presidio. |
+| `ENTITY_STRATEGY_DEFAULT` | `token` | Strategy for enabled non-nominal types: `pool` (fictional value) or `token` (`<TYPE_N>` placeholder). |
+| `ENTITY_STRATEGY` | *(empty)* | Per-type overrides, e.g. `PHONE_NUMBER:pool,CREDIT_CARD:token`. Nominal types (`PERSON`/`ORGANIZATION`/`LOCATION`) default to `pool`. See [Substitution strategy](/guide/configuration#substitution-strategy). |
 
 ## Redis
 
