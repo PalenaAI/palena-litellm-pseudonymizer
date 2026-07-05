@@ -293,13 +293,17 @@ jobs:
         with:
           cosign-release: "v2.5.3"
 
-      - name: Login to GHCR (Helm OCI registry)
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "${GHCR_TOKEN}" | helm registry login "${REGISTRY}" \
-            --username "${{ github.actor }}" --password-stdin
+      # Log in via docker/login-action so BOTH helm push and cosign share one
+      # credential store (~/.docker/config.json). cosign reads only the docker
+      # cred store, so a shell `helm registry login` (which writes Helm's own
+      # store) left cosign unauthenticated. Using the action also removes the
+      # `${{ github.actor }}` shell interpolation (zizmor template-injection).
+      - name: Login to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Package chart
         env:
@@ -320,6 +324,8 @@ jobs:
           VERSION: ${{ needs.build-and-publish.outputs.version }}
         run: |
           set -euo pipefail
+          # Point Helm at the docker cred store populated by docker/login-action.
+          export HELM_REGISTRY_CONFIG="${HOME}/.docker/config.json"
           out=$(helm push "dist/${CHART_NAME}-${VERSION}.tgz" "oci://${CHART_OCI_REPO}" 2>&1)
           echo "${out}"
           digest=$(printf '%s\n' "${out}" | awk '/[Dd]igest:/ {print $2}')
@@ -329,7 +335,11 @@ jobs:
           fi
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
+      # Best-effort: the chart is already pushed by the previous step, so a
+      # signing hiccup must never fail the job and block the GitHub Release.
+      # (The container image remains signed + SLSA-attested regardless.)
       - name: Sign chart (keyless, OIDC)
+        continue-on-error: true
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
           COSIGN_YES: "true"
