@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-06
+
+### Added
+
+- **Wäg gateway support** — a second endpoint, `POST /v1/waeg/check`, speaking
+  the Wäg HTTP guardrail protocol (`allow` / `mask` / `block`) against the same
+  pseudonymization core. Maps `pre_call` to pseudonymization and
+  `during_call` / `post_call` to reversal, rewriting the uncommitted stream
+  window with `hold_chars` so partially-streamed names are never emitted
+  half-substituted. Accepts `Authorization: Bearer` in addition to `x-api-key`,
+  since that is how Wäg authenticates.
+- **Documentation** — [Wire into Wäg](docs/guide/waeg-integration.md), covering
+  the required `role: transform` and `on_error: closed` item configuration,
+  phase mapping, and session-id behaviour.
+
+### Notes
+
+- The LiteLLM endpoint, its wire contract and its behaviour are unchanged; this
+  release is additive and needs no configuration or chart changes to upgrade.
+- Wäg defaults to **fail-open**. This service fails closed (`502`) when Presidio
+  or Redis is unreachable, but Wäg reads a non-action response as a host error
+  and forwards the original prompt unless the item sets `on_error: closed`.
+  Configure it.
+
 ## [0.3.0] - 2026-07-04
 
 ### Added
@@ -108,7 +132,8 @@ Initial release.
   scanning with SBOM, cosign keyless signing, SLSA Level 3 provenance, and
   OpenSSF Scorecard.
 
-[Unreleased]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/releases/tag/v0.1.0
