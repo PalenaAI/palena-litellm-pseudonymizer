@@ -90,6 +90,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	if cfg.Handler != nil {
 		r.Post("/beta/litellm_basic_guardrail_api", cfg.Handler.ServeHTTP)
+		// Wäg gateway stream codec (pre_call / during_call / post_call).
+		r.Post("/v1/waeg/check", cfg.Handler.ServeWaegHTTP)
 	}
 
 	if cfg.SessionsHandler != nil {
