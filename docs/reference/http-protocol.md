@@ -11,6 +11,11 @@ Content-Type: application/json
 The `input_type` field distinguishes the two phases — there is no separate
 endpoint for pre- and post-call.
 
+A second endpoint, `POST /v1/waeg/check`, speaks the Wäg gateway's guardrail
+protocol against the same pseudonymization core. It is documented separately in
+[Wire into Wäg](/guide/waeg-integration); the rest of this page describes the
+LiteLLM contract.
+
 ## Request
 
 ```json

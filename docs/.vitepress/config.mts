@@ -40,6 +40,7 @@ export default defineConfig({
           { text: 'Organization detection', link: '/guide/organization-detection' },
           { text: 'Deploy with Helm', link: '/guide/deployment' },
           { text: 'Wire into LiteLLM', link: '/guide/litellm-integration' },
+          { text: 'Wire into Wäg', link: '/guide/waeg-integration' },
         ],
       },
       {
