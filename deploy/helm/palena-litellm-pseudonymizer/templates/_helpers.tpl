@@ -31,10 +31,29 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
-{{/* Selector labels. */}}
+{{/* Selector labels shared by EVERY object in the release. */}}
 {{- define "pseudonymizer.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "pseudonymizer.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{/*
+Selector labels for the pseudonymizer service ITSELF.
+
+The bundled dependencies (redis, presidio-analyzer, presidio-image-redactor) all
+carry the shared selectorLabels plus their own app.kubernetes.io/component, so a
+selector built from selectorLabels alone matches EVERY pod in the release, not
+just ours. That is not cosmetic: the main Service then load-balances across
+presidio and redis, which answer 404 (or nothing) for /v1/waeg/check and
+/beta/litellm_basic_guardrail_api. A gateway with the guardrail set to fail
+closed blocks those requests outright — measured at roughly 40% of calls with the
+default 2 replicas.
+
+Anything that must address only the pseudonymizer pods uses this instead.
+*/}}
+{{- define "pseudonymizer.componentSelectorLabels" -}}
+{{ include "pseudonymizer.selectorLabels" . }}
+app.kubernetes.io/component: pseudonymizer
 {{- end -}}
 
 {{- define "pseudonymizer.serviceAccountName" -}}

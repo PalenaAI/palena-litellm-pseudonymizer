@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-24
+
+### Fixed
+
+- **The chart's own Service load-balanced across the bundled dependencies.**
+  `pseudonymizer.selectorLabels` is the label set shared by *every* object in the
+  release, and the main Service, PodDisruptionBudget and ServiceMonitor selected
+  on it alone. The bundled redis and Presidio deployments carry those same labels
+  plus their own `app.kubernetes.io/component`, so all three selectors matched
+  every pod in the release rather than the pseudonymizer's own.
+
+  In practice the Service sent a share of traffic to presidio-analyzer,
+  presidio-image-redactor and redis, none of which serve `/v1/waeg/check` or
+  `/beta/litellm_basic_guardrail_api`: Presidio answers `404` (its Flask handler,
+  so the body is an HTML-ish JSON error, not ours) and redis is not HTTP at all.
+  With the default 2 replicas that is 3 wrong endpoints out of 5 — roughly 40% of
+  requests measured against a real deployment. A gateway configured the way the
+  docs require (`on_error: closed`) turns every one of those into a blocked
+  request, so chat traffic failed intermittently with no clue pointing here.
+
+  The pseudonymizer's own pods now carry `app.kubernetes.io/component:
+  pseudonymizer`, and the Service, PDB and ServiceMonitor select on it.
+
+  The Deployment's `spec.selector` is deliberately left as it was: it is
+  immutable once created, so narrowing it would break `helm upgrade` from 0.4.0
+  with "field is immutable". The overlap is harmless there — the dependencies'
+  pods already carry a controller ownerRef and cannot be adopted.
+
+  Upgrading from 0.4.0 replaces the pods (the pod template gains a label) and
+  needs no manual step.
+
+- **`helm install` with the chart's own default values never started.** Two
+  values were rendered in a form the service rejects at startup, so a plain
+  install crash-looped and only a caller that happened to override them (the
+  Navique AI Core operator does) ever ran:
+  - `config.session.ttlSeconds: 3600` reached the service as `"3600"`, but it is
+    parsed as a Go `time.Duration`, which requires a unit —
+    `converting '3600' to type time.Duration: missing unit`. The template now
+    accepts both a bare number (seconds) and an explicit duration such as `90m`.
+    The env var's `_SECONDS` name and its `time.Duration` type still disagree;
+    reconciling them is left for a release that can change the contract.
+  - `config.maxRequestBytes` and `config.nonText.maxImageBytes` were rendered in
+    scientific notation (`3.3554432e+07`), since Helm parses YAML numbers as
+    float64 — `strconv.ParseInt: invalid syntax`. Both are now cast with `int64`.
+
 ## [0.4.0] - 2026-08-06
 
 ### Added
@@ -132,7 +177,8 @@ Initial release.
   scanning with SBOM, cosign keyless signing, SLSA Level 3 provenance, and
   OpenSSF Scorecard.
 
-[Unreleased]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.1.0...v0.2.0

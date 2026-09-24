@@ -9,6 +9,12 @@ spec:
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
+    # NOT componentSelectorLabels: spec.selector is immutable once created, so
+    # narrowing it here would fail every upgrade from <= 0.4.0 with "field is
+    # immutable". It stays as-is; the component label is added to the pod
+    # template below, which is what the Service/PDB/ServiceMonitor select on.
+    # Overlap with the bundled dependencies is harmless for the ReplicaSet —
+    # their pods already carry a controller ownerRef, so they cannot be adopted.
     matchLabels:
       {{- include "pseudonymizer.selectorLabels" . | nindent 6 }}
   template:
@@ -20,7 +26,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "pseudonymizer.selectorLabels" . | nindent 8 }}
+        {{- include "pseudonymizer.componentSelectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:

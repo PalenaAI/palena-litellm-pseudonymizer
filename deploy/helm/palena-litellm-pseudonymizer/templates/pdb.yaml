@@ -9,5 +9,5 @@ spec:
   minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
   selector:
     matchLabels:
-      {{- include "pseudonymizer.selectorLabels" . | nindent 6 }}
+      {{- include "pseudonymizer.componentSelectorLabels" . | nindent 6 }}
 {{- end }}
