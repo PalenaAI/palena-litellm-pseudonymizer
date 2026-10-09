@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Several languages per deployment.** `PRESIDIO_LANGUAGES` (chart
+  `config.languages`) lists the languages users write in; each message is
+  classified among them offline (lingua-go) and analyzed in its own language,
+  falling back to the first. German text analyzed as English missed most German
+  names and tagged ordinary words as organizations. One language behaves as
+  before.
+- **Multilingual Presidio analyzer image.** `ghcr.io/palenaai/palena-presidio-analyzer`
+  (published with each release) is Presidio plus the German, French and Italian
+  spaCy models. The chart switches to it, and renders the analyzer's NLP,
+  recognizer and language config, as soon as `config.languages` holds anything
+  but English. Each extra language needs roughly 800Mi more analyzer memory.
+- **Deny-lists for any entity type.** Chart `presidio.analyzer.denyLists`
+  (`entity` + `terms`) makes exact-match terms always detected as that type, in
+  every configured language. `presidio.analyzer.organizations` still works.
+- **Per-type score thresholds.** `ENTITY_SCORE_THRESHOLD` (chart
+  `config.entityScoreThreshold`) overrides `PRESIDIO_SCORE_THRESHOLD` per entity
+  type and defaults to `PHONE_NUMBER:0.4`: Presidio scores every phone number
+  0.4, so under the 0.7 default none was ever masked.
+
+### Changed
+
+- The chart's default memory limit for the service is 512Mi (was 256Mi): the
+  language classifier's models take about 140Mi when several languages are set.
+
+### Fixed
+
+- **Entities after a non-ASCII character were left unmasked.** Presidio returns
+  character offsets and the service sliced the text by bytes, so any accented
+  letter before an entity ("Zürich", "rencontré") shifted the span and the name
+  went through to the model unchanged. Offsets are now converted to byte offsets.
+
 ## [0.4.1] - 2026-09-24
 
 ### Fixed

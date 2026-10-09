@@ -1,6 +1,7 @@
 {{- if .Values.presidio.analyzer.enabled }}
 {{- $needsConfig := include "pseudonymizer.analyzer.needsConfig" . -}}
-{{- $denyList := gt (len .Values.presidio.analyzer.organizations) 0 -}}
+{{- $recognizers := include "pseudonymizer.analyzer.needsRecognizers" . -}}
+{{- $multi := include "pseudonymizer.multilingual" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,7 +27,7 @@ spec:
     spec:
       containers:
         - name: analyzer
-          image: {{ .Values.presidio.analyzer.image | quote }}
+          image: {{ include "pseudonymizer.analyzer.image" . | quote }}
           ports:
             - name: http
               containerPort: 3000
@@ -42,13 +43,19 @@ spec:
             {{- toYaml .Values.presidio.analyzer.resources | nindent 12 }}
           {{- if $needsConfig }}
           volumeMounts:
-            {{- if .Values.presidio.analyzer.nerOrganization }}
+            {{- if or .Values.presidio.analyzer.nerOrganization $multi }}
             - name: config
               mountPath: /app/presidio_analyzer/conf/default.yaml
               subPath: default.yaml
               readOnly: true
             {{- end }}
-            {{- if $denyList }}
+            {{- if $multi }}
+            - name: config
+              mountPath: /app/presidio_analyzer/conf/default_analyzer.yaml
+              subPath: default_analyzer.yaml
+              readOnly: true
+            {{- end }}
+            {{- if $recognizers }}
             - name: config
               mountPath: /app/presidio_analyzer/conf/default_recognizers.yaml
               subPath: default_recognizers.yaml

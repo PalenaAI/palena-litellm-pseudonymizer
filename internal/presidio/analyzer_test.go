@@ -95,3 +95,19 @@ func TestAnalyzer_FillsMissingText(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, "Alice", got[0].Text)
 }
+
+// Presidio's offsets count characters, not bytes: with "Zürich" before the
+// name, byte slicing would cut "errn Brunne" and the name would go unmasked.
+func TestAnalyzer_CharacterOffsetsWithNonASCII(t *testing.T) {
+	text := "Frau Keller aus Zürich hat mit Herrn Brunner telefoniert."
+	a := newAnalyzerServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"entity_type": "PERSON", "start": 31, "end": 44, "score": 0.85},
+		})
+	})
+	got, err := a.Analyze(context.Background(), text, []string{"PERSON"}, "de")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "Herrn Brunner", got[0].Text)
+	require.Equal(t, "Herrn Brunner", text[got[0].Start:got[0].End])
+}

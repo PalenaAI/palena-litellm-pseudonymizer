@@ -29,7 +29,8 @@ resources:
     memory: 64Mi
   limits:
     cpu: "1"
-    memory: 256Mi
+    # Several config.languages load the language classifier's models (~140Mi).
+    memory: 512Mi
 
 # ---------------------------------------------------------------------------
 # Guardrail behaviour → PALENA_PSEUDONYMIZER_* env vars. See docs/CONFIG.md.
@@ -42,7 +43,21 @@ config:
   # opt in: e.g. "PERSON,ORGANIZATION,CREDIT_CARD,US_SSN,EMAIL_ADDRESS".
   # LOCATION is intentionally excluded by default (city drift).
   entities: "PERSON,ORGANIZATION"
+  # Per-type minimum score, overriding scoreThreshold: "TYPE:score,…".
+  # Presidio scores every phone number 0.4, so without the default override
+  # PHONE_NUMBER would never be masked under the 0.7 threshold.
+  entityScoreThreshold: "PHONE_NUMBER:0.4"
+  # Language Presidio analyzes in, when `languages` is empty.
   language: en
+  # Several languages (en, de, fr, it): each message is classified among them
+  # and analyzed in its own language; the first is the fallback for text too
+  # short to classify. Anything other than English alone switches the
+  # analyzer to presidio.analyzer.multilingualImage, and each extra language
+  # needs roughly 800Mi more analyzer memory (raise
+  # presidio.analyzer.resources accordingly).
+  languages: []
+  #   - en
+  #   - de
   # Substitution strategy. Nominal identities (PERSON/ORG/LOCATION) use
   # realistic fake names; structured PII (cards, SSNs, emails, IDs) uses
   # reversible tokens like <CREDIT_CARD_1>.
@@ -118,6 +133,13 @@ presidio:
     enabled: true
     url: ""   # external URL when enabled=false, e.g. http://presidio-analyzer:3000
     image: mcr.microsoft.com/presidio-analyzer:latest
+    # -- Analyzer image used when config.languages holds anything other than
+    #    English alone: Presidio plus the German, French and Italian spaCy
+    #    models (the stock image ships English only). Tag defaults to the
+    #    chart's appVersion.
+    multilingualImage:
+      repository: ghcr.io/palenaai/palena-presidio-analyzer
+      tag: ""
     # -- ORGANIZATION detection via spaCy NER. ON by default so orgs are
     #    masked even when no deny-list is configured. spaCy ORG is somewhat
     #    noisy (occasional false positives) — set false to rely solely on
@@ -131,6 +153,14 @@ presidio:
     #   - Novartis
     #   - Roche
     #   - Contoso Ltd
+    # -- Exact-match deny-lists for any entity type: terms that are always
+    #    detected (and pseudonymized) as that type, in every configured
+    #    language. The entity must also be listed in config.entities.
+    denyLists: []
+    #   - entity: PERSON
+    #     terms: [Project Falcon]
+    #   - entity: ORGANIZATION
+    #     terms: [Contoso Ltd, Fabrikam]
     resources:
       requests: { cpu: 250m, memory: 512Mi }
       limits: { cpu: "2", memory: 2Gi }

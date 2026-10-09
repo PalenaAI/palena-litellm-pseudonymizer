@@ -21,10 +21,12 @@ type stubAnalyzer struct {
 	detections []presidio.Detection
 	err        error
 	calls      int
+	languages  []string
 }
 
-func (s *stubAnalyzer) Analyze(_ context.Context, _ string, _ []string, _ string) ([]presidio.Detection, error) {
+func (s *stubAnalyzer) Analyze(_ context.Context, _ string, _ []string, language string) ([]presidio.Detection, error) {
 	s.calls++
+	s.languages = append(s.languages, language)
 	return s.detections, s.err
 }
 
@@ -323,4 +325,51 @@ func TestHandler_MultiTurnIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, res1.Text, res2.Text)
 	require.Equal(t, 0, res2.NewMappingsCreated, "second call reuses mapping")
+}
+
+// With several languages each text is analyzed in its own: a German turn is
+// sent to Presidio as "de", where the English model would miss German names.
+func TestPseudonymize_AnalyzesInDetectedLanguage(t *testing.T) {
+	mr := miniredis.RunT(t)
+	store := mapping.NewRedisStoreFromClient(redis.NewClient(&redis.Options{Addr: mr.Addr()}),
+		mapping.Config{SessionTTL: time.Minute, Timeout: time.Second}, nil)
+	stub := &stubAnalyzer{}
+	h := NewHandler(HandlerConfig{
+		Analyzer:  stub,
+		Store:     store,
+		Pools:     NewPools(map[string][]string{"PERSON": {"Alpha"}}),
+		Entities:  []string{"PERSON"},
+		Languages: []string{"en", "de"},
+	})
+	for _, text := range []string{"Bitte frag Anna Schmidt nach dem Vertrag", "Please ask John Smith about the contract"} {
+		_, err := h.Pseudonymize(context.Background(), text, "s1")
+		require.NoError(t, err)
+	}
+	require.Equal(t, []string{"de", "en"}, stub.languages)
+}
+
+// Each entity type is held to its own threshold: a 0.4 phone match passes its
+// 0.4 override while a 0.5 PERSON match fails the 0.7 global threshold.
+func TestPseudonymize_PerEntityThreshold(t *testing.T) {
+	mr := miniredis.RunT(t)
+	store := mapping.NewRedisStoreFromClient(redis.NewClient(&redis.Options{Addr: mr.Addr()}),
+		mapping.Config{SessionTTL: time.Minute, Timeout: time.Second}, nil)
+	text := "Call Bob at 079 123 45 67"
+	stub := &stubAnalyzer{detections: []presidio.Detection{
+		{EntityType: "PERSON", Start: 5, End: 8, Score: 0.5, Text: "Bob"},
+		{EntityType: "PHONE_NUMBER", Start: 12, End: 25, Score: 0.4, Text: "079 123 45 67"},
+	}}
+	h := NewHandler(HandlerConfig{
+		Analyzer:         stub,
+		Store:            store,
+		Strategizer:      NewStrategizer(StrategizerConfig{Pools: NewPools(map[string][]string{"PERSON": {"Alpha"}}), Default: string(StrategyToken)}),
+		Entities:         []string{"PERSON", "PHONE_NUMBER"},
+		ScoreThreshold:   0.7,
+		EntityThresholds: map[string]float64{"PHONE_NUMBER": 0.4},
+	})
+	res, err := h.Pseudonymize(context.Background(), text, "s1")
+	require.NoError(t, err)
+	require.Equal(t, 1, res.EntitiesDetected)
+	require.Contains(t, res.Text, "Bob")
+	require.NotContains(t, res.Text, "079 123 45 67")
 }

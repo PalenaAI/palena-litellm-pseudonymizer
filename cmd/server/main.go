@@ -67,7 +67,7 @@ func run() error {
 	analyzer := presidio.NewAnalyzer(presidio.AnalyzerConfig{
 		BaseURL:        cfg.AnalyzerURL,
 		Timeout:        cfg.PresidioTimeout,
-		ScoreThreshold: cfg.ScoreThreshold,
+		ScoreThreshold: cfg.MinScoreThreshold(),
 	})
 
 	// Substitution strategy: pool (fictional names) for nominal identities,
@@ -90,9 +90,11 @@ func run() error {
 		Store:                store,
 		Strategizer:          strategizer,
 		Entities:             cfg.Entities,
-		Language:             cfg.Language,
+		Languages:            cfg.AnalyzeLanguages(),
 		DecomposePersonNames: cfg.DecomposePersonNames,
 		AllowList:            allowList,
+		ScoreThreshold:       cfg.ScoreThreshold,
+		EntityThresholds:     cfg.EntityThresholds(),
 	})
 
 	// Image handler

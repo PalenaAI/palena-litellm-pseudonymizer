@@ -9,10 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
+
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/language"
 )
 
 // Config is the parsed shape. Env vars are read with the
@@ -33,12 +36,22 @@ type Config struct {
 	PresidioTimeout   time.Duration `envconfig:"PRESIDIO_TIMEOUT_SECONDS" default:"10s"`
 	PresidioReadiness time.Duration `envconfig:"PRESIDIO_READINESS_TIMEOUT_SECONDS" default:"2s"`
 	ScoreThreshold    float64       `envconfig:"PRESIDIO_SCORE_THRESHOLD" default:"0.7"`
+	// EntityScoreThreshold overrides the threshold per entity type:
+	// "PHONE_NUMBER:0.4,EMAIL_ADDRESS:0.9". Presidio's phone recognizer scores
+	// every match 0.4, so under the 0.7 default no phone number would ever be
+	// masked; the default lowers it for that type only.
+	EntityScoreThreshold []string `envconfig:"ENTITY_SCORE_THRESHOLD" default:"PHONE_NUMBER:0.4"`
 	// LOCATION is intentionally NOT in the default set: pseudonymizing a
 	// city (Paris -> Riverside) leaks a wrong geography the model then
 	// reasons from ("which Riverside do you mean?", wrong weather/currency).
 	// Operators who need it can add LOCATION back via PRESIDIO_ENTITIES.
 	Entities []string `envconfig:"PRESIDIO_ENTITIES" default:"PERSON,ORGANIZATION"`
 	Language string   `envconfig:"PRESIDIO_LANGUAGE" default:"en"`
+	// Languages, when set, replaces Language with a list of ISO 639-1 codes:
+	// each text is classified among them and analyzed in its own language
+	// (the first is the fallback for text too short to classify). Presidio
+	// needs an NLP model loaded for every listed language.
+	Languages []string `envconfig:"PRESIDIO_LANGUAGES"`
 
 	// Substitution strategy per entity type. Nominal identities
 	// (PERSON/ORGANIZATION/LOCATION) default to "pool" — a realistic
@@ -152,6 +165,46 @@ func (c *Config) StrategyOverrides() map[string]string {
 	return out
 }
 
+// AnalyzeLanguages is the validated list of languages Presidio analyzes in:
+// PRESIDIO_LANGUAGES when set, else PRESIDIO_LANGUAGE.
+func (c *Config) AnalyzeLanguages() []string {
+	codes := c.Languages
+	if len(codes) == 0 {
+		codes = []string{c.Language}
+	}
+	out, _ := language.Parse(codes) // validated in Validate
+	return out
+}
+
+// EntityThresholds parses ENTITY_SCORE_THRESHOLD ("TYPE:0.4,…") into a map.
+// Invalid entries are surfaced by Validate, not here.
+func (c *Config) EntityThresholds() map[string]float64 {
+	out := map[string]float64{}
+	for _, pair := range c.EntityScoreThreshold {
+		k, v, ok := strings.Cut(strings.TrimSpace(pair), ":")
+		if !ok {
+			continue
+		}
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			continue
+		}
+		out[strings.TrimSpace(k)] = f
+	}
+	return out
+}
+
+// MinScoreThreshold is the lowest threshold any entity type uses: the one
+// Presidio is asked for, so a per-type override below the global one still
+// gets its matches back. The text handler applies each type's own.
+func (c *Config) MinScoreThreshold() float64 {
+	m := c.ScoreThreshold
+	for _, f := range c.EntityThresholds() {
+		m = min(m, f)
+	}
+	return m
+}
+
 // AllowListSet returns the allow-list as a set of lower-cased, trimmed
 // terms for O(1) case-insensitive lookup. Empty entries are dropped.
 func (c *Config) AllowListSet() map[string]struct{} {
@@ -181,6 +234,20 @@ func (c *Config) Validate() error {
 	}
 	if len(c.Entities) == 0 {
 		return errors.New("PRESIDIO_ENTITIES must be non-empty")
+	}
+	for _, pair := range c.EntityScoreThreshold {
+		p := strings.TrimSpace(pair)
+		if p == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(p, ":")
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if !ok || strings.TrimSpace(k) == "" || err != nil || f < 0 || f > 1 {
+			return fmt.Errorf("ENTITY_SCORE_THRESHOLD entry %q must be TYPE:score with score in [0.0, 1.0]", p)
+		}
+	}
+	if _, err := language.Parse(append([]string{c.Language}, c.Languages...)); err != nil {
+		return fmt.Errorf("PRESIDIO_LANGUAGE/PRESIDIO_LANGUAGES: %w", err)
 	}
 	validStrategy := func(s string) bool { return s == "pool" || s == "token" }
 	if !validStrategy(c.EntityStrategyDefault) {

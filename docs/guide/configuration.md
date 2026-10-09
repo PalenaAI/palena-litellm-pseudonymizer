@@ -66,6 +66,40 @@ Country-specific IDs (national identity cards, insurance numbers) usually need a
 the [organization deny-list](/guide/organization-detection).
 :::
 
+## Languages
+
+Presidio's name detection is per language: German text analyzed as English
+misses most German names and tags ordinary words ("Bitte") as organizations. List
+the languages your users write in:
+
+```bash
+PALENA_PSEUDONYMIZER_PRESIDIO_LANGUAGES=en,de,fr,it
+```
+
+Each message is classified among the listed languages (offline, with
+[lingua-go](https://github.com/pemistahl/lingua-go)) and analyzed in its own
+language; text too short or ambiguous to classify uses the first one. With one
+language nothing is classified.
+
+Presidio needs an NLP model for every listed language. The stock
+`presidio-analyzer` image ships English only; the chart switches to
+`ghcr.io/palenaai/palena-presidio-analyzer` (Presidio plus the German, French and
+Italian models) as soon as `config.languages` holds anything but English, and
+renders the analyzer's NLP, recognizer and language config to match. Each extra
+language needs roughly 800Mi more analyzer memory.
+
+## Score thresholds per entity type
+
+`PRESIDIO_SCORE_THRESHOLD` (0.7) applies to every type unless
+`ENTITY_SCORE_THRESHOLD` overrides it:
+
+```bash
+PALENA_PSEUDONYMIZER_ENTITY_SCORE_THRESHOLD=PHONE_NUMBER:0.4,EMAIL_ADDRESS:0.9
+```
+
+Presidio's phone recognizer scores every match 0.4, which is why the default
+lowers `PHONE_NUMBER` only: under 0.7 no phone number would ever be masked.
+
 ## Allow-list
 
 Terms that should **never** be pseudonymized, even when Presidio detects them:
@@ -82,11 +116,31 @@ Matched case-insensitively against the detected span. Use it for:
 - **words Presidio over-tags** — e.g. the generic NER tagging "SSN" as an
   `ORGANIZATION` (a false positive you saw in testing).
 
-It's the symmetric counterpart to the organization
-[deny-list](/guide/organization-detection): the deny-list *adds* detections,
-the allow-list *suppresses* them. Allow-listed terms are also excluded from
+It's the symmetric counterpart to the deny-lists below: a deny-list *adds*
+detections, the allow-list *suppresses* them. Allow-listed terms are also excluded from
 first/last-name decomposition, so an allow-listed surname never leaks a
 sub-mapping.
+
+## Deny-lists
+
+Terms that should **always** be pseudonymized, as a given entity type, whether
+or not Presidio's NER would find them — client names, project code names,
+internal people. Set them in the chart (they become exact-match Presidio
+recognizers in every configured language):
+
+```yaml
+presidio:
+  analyzer:
+    denyLists:
+      - entity: ORGANIZATION
+        terms: [Contoso Ltd, Fabrikam]
+      - entity: PERSON
+        terms: [Project Falcon]
+```
+
+The entity type must also be in `config.entities`. The older
+`presidio.analyzer.organizations` list still works and is the same as an
+`ORGANIZATION` entry.
 
 ## Deterministic pseudonyms
 

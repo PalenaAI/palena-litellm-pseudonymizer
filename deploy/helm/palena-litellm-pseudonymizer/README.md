@@ -72,6 +72,9 @@ After install, `helm` prints the service URL and a ready-to-paste
 | `redis.enabled` | `true` | Bundle Redis; disable + set `url` for external. |
 | `presidio.analyzer.nerOrganization` | `true` | spaCy ORG detection. |
 | `presidio.analyzer.organizations` | `[]` | Deny-list of known org names. |
+| `presidio.analyzer.denyLists` | `[]` | Deny-lists for any entity type (`- entity: PERSON` / `terms: [...]`). |
+| `config.languages` | `[]` | Several languages (`en`, `de`, `fr`, `it`): each message is analyzed in its own; switches to `presidio.analyzer.multilingualImage`. ~800Mi analyzer memory per extra language. |
+| `config.entityScoreThreshold` | `PHONE_NUMBER:0.4` | Per-type minimum score. |
 | `autoscaling.enabled` | `false` | HPA on CPU. |
 | `serviceMonitor.enabled` | `false` | Prometheus Operator scrape of `/metrics`. |
 

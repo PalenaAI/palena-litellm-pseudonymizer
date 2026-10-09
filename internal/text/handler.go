@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/audit"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/language"
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/mapping"
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/presidio"
 )
@@ -28,9 +29,14 @@ type Handler struct {
 	strat     *Strategizer
 	replacer  *Replacer
 	entities  []string
-	language  string
+	language  language.Detector
 	decompose bool
 	allowList map[string]struct{} // lower-cased terms never pseudonymized
+	// threshold / thresholds: the minimum score per entity type (overrides,
+	// else the global one). Zero threshold means Presidio's own filtering is
+	// all there is.
+	threshold  float64
+	thresholds map[string]float64
 }
 
 // HandlerConfig groups constructor parameters.
@@ -44,7 +50,12 @@ type HandlerConfig struct {
 	// a pool-only strategizer is built from Pools.
 	Strategizer *Strategizer
 	Entities    []string
-	Language    string
+	// Language is the one language every text is analyzed in. Ignored when
+	// Languages is set.
+	Language string
+	// Languages, when it holds several codes, classifies each text among
+	// them and analyzes it in its own language (see package language).
+	Languages []string
 	// DecomposePersonNames, when true, registers first-name and
 	// last-name sub-mappings for multi-token PERSON entities so that
 	// bare first/last-name references stay consistent with the
@@ -53,15 +64,21 @@ type HandlerConfig struct {
 	// AllowList holds lower-cased terms that are never pseudonymized even
 	// when Presidio detects them. See Config.AllowListSet.
 	AllowList map[string]struct{}
+	// ScoreThreshold is the minimum score a detection needs; EntityThresholds
+	// overrides it per entity type. Presidio is asked for the lowest of them
+	// (see Config.MinScoreThreshold), so each type's own is applied here.
+	ScoreThreshold   float64
+	EntityThresholds map[string]float64
 }
 
 // NewHandler builds a text handler. All fields are required except
-// Language, which defaults to "en".
+// Language/Languages, which default to "en".
 func NewHandler(cfg HandlerConfig) *Handler {
-	lang := cfg.Language
-	if lang == "" {
-		lang = "en"
+	codes := cfg.Languages
+	if len(codes) == 0 && cfg.Language != "" {
+		codes = []string{cfg.Language}
 	}
+	lang := language.New(codes)
 	strat := cfg.Strategizer
 	if strat == nil {
 		// Backward-compatible default: everything uses the pool strategy.
@@ -76,6 +93,9 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		language:  lang,
 		decompose: cfg.DecomposePersonNames,
 		allowList: cfg.AllowList,
+
+		threshold:  cfg.ScoreThreshold,
+		thresholds: cfg.EntityThresholds,
 	}
 }
 
@@ -108,11 +128,12 @@ func (h *Handler) Pseudonymize(ctx context.Context, text, sessionID string) (*Ps
 		return res, nil
 	}
 
-	detections, err := h.analyzer.Analyze(ctx, text, h.entities, h.language)
+	detections, err := h.analyzer.Analyze(ctx, text, h.entities, h.language.Detect(text))
 	if err != nil {
 		return nil, err
 	}
 	filtered := filterByEntityType(detections, h.entities)
+	filtered = h.filterScore(filtered)
 	filtered = h.filterAllowList(filtered)
 	res.EntitiesDetected = len(filtered)
 
@@ -302,6 +323,21 @@ func filterByEntityType(detections []presidio.Detection, allowed []string) []pre
 	out := make([]presidio.Detection, 0, len(detections))
 	for _, d := range detections {
 		if _, ok := set[d.EntityType]; ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// filterScore drops detections below their entity type's threshold.
+func (h *Handler) filterScore(detections []presidio.Detection) []presidio.Detection {
+	out := detections[:0:0]
+	for _, d := range detections {
+		min := h.threshold
+		if t, ok := h.thresholds[d.EntityType]; ok {
+			min = t
+		}
+		if d.Score >= min {
 			out = append(out, d)
 		}
 	}

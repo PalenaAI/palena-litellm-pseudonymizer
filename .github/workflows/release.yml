@@ -19,6 +19,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/palenaai/palena-litellm-pseudonymizer
+  ANALYZER_IMAGE_NAME: ghcr.io/palenaai/palena-presidio-analyzer
   CHART_DIR: deploy/helm/palena-litellm-pseudonymizer
   CHART_NAME: palena-litellm-pseudonymizer
   # OCI namespace for the packaged chart (kept separate from the image repo).
@@ -137,6 +138,65 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  build-analyzer:
+    # The chart's multilingual Presidio analyzer (deploy/presidio/Dockerfile.analyzer),
+    # tagged with the release version: the chart defaults its tag to appVersion.
+    name: Build & Publish Multilingual Analyzer
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout the repository
+      packages: write # push the image to GHCR
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup QEMU (multi-arch emulation)
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Login to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ${{ env.ANALYZER_IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+          labels: |
+            org.opencontainers.image.title=palena-presidio-analyzer
+            org.opencontainers.image.description=Presidio Analyzer with English, German, French and Italian spaCy models
+            org.opencontainers.image.vendor=bitkaio LLC
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Build & push (multi-arch)
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: deploy/presidio
+          file: deploy/presidio/Dockerfile.analyzer
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
   sign-and-attest:
     name: Sign, SBOM & Scan
     needs: build-and-publish
@@ -252,7 +312,8 @@ jobs:
 
   publish-chart:
     name: Package & Publish Helm Chart
-    needs: build-and-publish
+    # The chart's multilingual analyzer tag must exist before the chart does.
+    needs: [build-and-publish, build-analyzer]
     runs-on: ubuntu-latest
     permissions:
       contents: read # checkout the repository
@@ -375,7 +436,7 @@ jobs:
 
   github-release:
     name: GitHub Release
-    needs: [build-and-publish, sign-and-attest, provenance, publish-chart]
+    needs: [build-and-publish, build-analyzer, sign-and-attest, provenance, publish-chart]
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub Release and upload release assets

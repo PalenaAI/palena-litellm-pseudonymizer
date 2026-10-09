@@ -53,10 +53,15 @@ presidio:
 | `replicaCount` | `2` | Guardrail replicas. |
 | `image.tag` | chart appVersion | Service image tag. |
 | `config.entities` | `PERSON,ORGANIZATION` | Detected entity types. |
+| `config.languages` | `[]` (= `config.language`, `en`) | Languages to analyze in; several switch to the multilingual analyzer image. |
+| `config.entityScoreThreshold` | `PHONE_NUMBER:0.4` | Per-type minimum score. |
+| `config.allowList` | `""` | Terms never pseudonymized. |
 | `apiKey.enabled` | `false` | Require an `x-api-key` header. |
 | `redis.enabled` | `true` | Bundle Redis. |
 | `presidio.analyzer.nerOrganization` | `true` | spaCy org detection. |
 | `presidio.analyzer.organizations` | `[]` | Exact-match org deny-list. |
+| `presidio.analyzer.denyLists` | `[]` | Exact-match deny-lists for any entity type. |
+| `presidio.analyzer.multilingualImage` | `ghcr.io/palenaai/palena-presidio-analyzer:<appVersion>` | Analyzer used for anything but English alone. |
 | `autoscaling.enabled` | `false` | HPA on CPU. |
 | `serviceMonitor.enabled` | `false` | Prometheus Operator scrape. |
 

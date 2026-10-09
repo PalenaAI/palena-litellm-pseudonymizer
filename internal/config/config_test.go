@@ -51,3 +51,36 @@ func TestPoolsMap(t *testing.T) {
 	require.Contains(t, m, "ORGANIZATION")
 	require.Contains(t, m, "LOCATION")
 }
+
+func TestLoad_Languages(t *testing.T) {
+	t.Setenv("PALENA_PSEUDONYMIZER_PRESIDIO_LANGUAGES", "de, EN,fr")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, []string{"de", "en", "fr"}, cfg.AnalyzeLanguages())
+}
+
+func TestLoad_LanguageFallsBackToSingle(t *testing.T) {
+	t.Setenv("PALENA_PSEUDONYMIZER_PRESIDIO_LANGUAGE", "it")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, []string{"it"}, cfg.AnalyzeLanguages())
+}
+
+func TestLoad_BadLanguage(t *testing.T) {
+	t.Setenv("PALENA_PSEUDONYMIZER_PRESIDIO_LANGUAGES", "en,klingon")
+	_, err := Load()
+	require.ErrorContains(t, err, "klingon")
+}
+
+// Presidio's phone recognizer scores 0.4: the default override keeps phone
+// numbers maskable under the 0.7 global threshold.
+func TestLoad_EntityThresholds(t *testing.T) {
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, map[string]float64{"PHONE_NUMBER": 0.4}, cfg.EntityThresholds())
+	require.InDelta(t, 0.4, cfg.MinScoreThreshold(), 1e-9)
+
+	t.Setenv("PALENA_PSEUDONYMIZER_ENTITY_SCORE_THRESHOLD", "PHONE_NUMBER:1.5")
+	_, err = Load()
+	require.ErrorContains(t, err, "ENTITY_SCORE_THRESHOLD")
+}

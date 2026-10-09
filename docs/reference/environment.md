@@ -23,7 +23,9 @@ startup and exits on invalid values.
 | `PRESIDIO_TIMEOUT_SECONDS` | `10` | Per-request timeout. |
 | `PRESIDIO_SCORE_THRESHOLD` | `0.7` | Minimum detection confidence, `[0,1]`. |
 | `PRESIDIO_ENTITIES` | `PERSON,ORGANIZATION` | Entity types to detect. Add structured PII (`CREDIT_CARD`, `US_SSN`, `EMAIL_ADDRESS`, …) to opt in. `LOCATION` excluded by default. |
-| `PRESIDIO_LANGUAGE` | `en` | Language forwarded to Presidio. |
+| `ENTITY_SCORE_THRESHOLD` | `PHONE_NUMBER:0.4` | Per-type minimum confidence, overriding `PRESIDIO_SCORE_THRESHOLD`: `TYPE:score,…`. Presidio scores every phone number 0.4, so the default keeps `PHONE_NUMBER` maskable. |
+| `PRESIDIO_LANGUAGE` | `en` | Language forwarded to Presidio when `PRESIDIO_LANGUAGES` is empty. |
+| `PRESIDIO_LANGUAGES` | *(empty)* | Several ISO 639-1 codes (`en,de,fr,it`): each text is classified among them and analyzed in its own language; the first is the fallback. Presidio needs a model for each. See [Configuration → Languages](/guide/configuration#languages). |
 | `ENTITY_STRATEGY_DEFAULT` | `token` | Strategy for enabled non-nominal types: `pool` (fictional value) or `token` (`<TYPE_N>` placeholder). |
 | `ENTITY_STRATEGY` | *(empty)* | Per-type overrides, e.g. `PHONE_NUMBER:pool,CREDIT_CARD:token`. Nominal types (`PERSON`/`ORGANIZATION`/`LOCATION`) default to `pool`. See [Substitution strategy](/guide/configuration#substitution-strategy). |
 

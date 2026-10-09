@@ -102,9 +102,73 @@ app.kubernetes.io/component: pseudonymizer
 {{- end -}}
 {{- end -}}
 
-{{/* Whether the analyzer needs a mounted config (NER-ORG on OR deny-list set). */}}
+{{/* Whether the analyzer needs a mounted config (NER-ORG on, a deny-list, or more than English). */}}
 {{- define "pseudonymizer.analyzer.needsConfig" -}}
-{{- if or .Values.presidio.analyzer.nerOrganization (gt (len .Values.presidio.analyzer.organizations) 0) -}}
+{{- if or .Values.presidio.analyzer.nerOrganization (include "pseudonymizer.analyzer.needsRecognizers" .) (include "pseudonymizer.multilingual" .) -}}
 true
 {{- end -}}
+{{- end -}}
+
+{{/*
+Languages Presidio analyzes in, comma-separated: config.languages, else
+config.language. Each must have a bundled spaCy model (see spacyModel).
+*/}}
+{{- define "pseudonymizer.languages" -}}
+{{- $langs := .Values.config.languages | default (list .Values.config.language) -}}
+{{- $out := list -}}
+{{- range $langs -}}
+{{- $l := . | toString | trim | lower -}}
+{{- if not (hasKey (include "pseudonymizer.spacyModels" $ | fromYaml) $l) -}}
+{{- fail (printf "config.languages: no spaCy model is bundled for %q (supported: en, de, fr, it)" $l) -}}
+{{- end -}}
+{{- if not (has $l $out) -}}
+{{- $out = append $out $l -}}
+{{- end -}}
+{{- end -}}
+{{- join "," $out -}}
+{{- end -}}
+
+{{/* The spaCy model per supported language (the multilingual analyzer image ships all four). */}}
+{{- define "pseudonymizer.spacyModels" -}}
+en: en_core_web_lg
+de: de_core_news_lg
+fr: fr_core_news_lg
+it: it_core_news_lg
+{{- end -}}
+
+{{/* True when Presidio must analyze in anything other than English alone. */}}
+{{- define "pseudonymizer.multilingual" -}}
+{{- if ne (include "pseudonymizer.languages" .) "en" -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/* True when the recognizer registry must be mounted (deny-lists or extra languages). */}}
+{{- define "pseudonymizer.analyzer.needsRecognizers" -}}
+{{- if or (gt (len .Values.presidio.analyzer.organizations) 0) (gt (len .Values.presidio.analyzer.denyLists) 0) (include "pseudonymizer.multilingual" .) -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Analyzer image: the stock Presidio image ships English only, so any other
+language switches to the multilingual image (same Presidio plus the de/fr/it
+models).
+*/}}
+{{- define "pseudonymizer.analyzer.image" -}}
+{{- if include "pseudonymizer.multilingual" . -}}
+{{- $m := .Values.presidio.analyzer.multilingualImage -}}
+{{- printf "%s:%s" $m.repository ($m.tag | default .Chart.AppVersion) -}}
+{{- else -}}
+{{- .Values.presidio.analyzer.image -}}
+{{- end -}}
+{{- end -}}
+
+{{/* A YAML block list ("  - a\n  - b") of the given strings. */}}
+{{- define "pseudonymizer.yamlList" -}}
+{{- $items := list -}}
+{{- range . -}}
+{{- $items = append $items (printf "  - %s" .) -}}
+{{- end -}}
+{{- join "\n" $items -}}
 {{- end -}}

@@ -124,16 +124,22 @@ func (a *Analyzer) Analyze(ctx context.Context, text string, entities []string, 
 	}
 
 	// Fill in Text field if the server omitted it (older Presidio
-	// versions return only offsets).
+	// versions return only offsets). Presidio counts in characters (Python
+	// code points) while Go strings index bytes: Start/End are converted to
+	// byte offsets first, or every non-ASCII character before an entity
+	// ("Zürich", "rencontré") shifts the span and the entity goes unmasked.
+	byteAt := runeByteOffsets(text)
 	out := make([]Detection, 0, len(raw))
 	for _, d := range raw {
 		if d.EntityType == "" {
 			continue
 		}
+		if d.Start < 0 || d.End >= len(byteAt) || d.Start >= d.End {
+			continue
+		}
+		d.Start, d.End = byteAt[d.Start], byteAt[d.End]
 		if d.Text == "" {
-			if d.Start >= 0 && d.End <= len(text) && d.Start < d.End {
-				d.Text = text[d.Start:d.End]
-			}
+			d.Text = text[d.Start:d.End]
 		}
 		if strings.TrimSpace(d.Text) == "" {
 			continue
@@ -141,4 +147,14 @@ func (a *Analyzer) Analyze(ctx context.Context, text string, entities []string, 
 		out = append(out, d)
 	}
 	return out, nil
+}
+
+// runeByteOffsets maps each character index of text to its byte offset, with
+// one extra entry for the end of the string.
+func runeByteOffsets(text string) []int {
+	out := make([]int, 0, len(text)+1)
+	for i := range text {
+		out = append(out, i)
+	}
+	return append(out, len(text))
 }
