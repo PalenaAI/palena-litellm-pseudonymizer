@@ -22,3 +22,8 @@ node_modules/
 .DS_Store
 .idea/
 *.swp
+
+# Python (deploy/ner)
+__pycache__/
+*.pyc
+.pytest_cache/
