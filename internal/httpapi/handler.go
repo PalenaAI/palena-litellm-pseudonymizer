@@ -201,6 +201,14 @@ func (h *Handler) mapError(w http.ResponseWriter, r *http.Request, err error, ph
 			slog.String("err", err.Error()),
 		)
 		h.writeError(w, http.StatusBadGateway, errs.ErrPresidioUnavailable.Error())
+	case errors.Is(err, errs.ErrNERUnavailable),
+		errors.Is(err, errs.ErrNERMalformed):
+		h.logger.LogAttrs(r.Context(), slog.LevelError,
+			"ner_error",
+			slog.String("phase", string(phase)),
+			slog.String("err", err.Error()),
+		)
+		h.writeError(w, http.StatusBadGateway, errs.ErrNERUnavailable.Error())
 	case errors.Is(err, errs.ErrMappingStoreUnavailable):
 		h.logger.LogAttrs(r.Context(), slog.LevelError,
 			"mapping_error",

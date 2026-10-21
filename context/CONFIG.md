@@ -20,6 +20,28 @@ config — never boot into a half-configured state.
 | `PALENA_PSEUDONYMIZER_LOG_FORMAT` | `json` | `json` or `text`. |
 | `PALENA_PSEUDONYMIZER_API_KEY` | (empty = dev mode) | Value clients must send in `x-api-key`. Empty ⇒ accept anyone (log WARN). |
 
+## Detection engine
+
+| Env var | Default | Notes |
+| --- | --- | --- |
+| `PALENA_PSEUDONYMIZER_DETECTION_ENGINE` | `presidio` | `presidio` \| `ner`. The chart defaults to `ner`. |
+| `PALENA_PSEUDONYMIZER_NER_URL` | `http://ner:3000` | Must be absolute when the engine is `ner`. |
+| `PALENA_PSEUDONYMIZER_NER_TIMEOUT_SECONDS` | `10s` | Per call. |
+| `PALENA_PSEUDONYMIZER_NER_THRESHOLD` | `0.9` | `[0, 1]`. Becomes the per-type threshold of every NER type not named in `ENTITY_SCORE_THRESHOLD`; the service is asked for the lowest. |
+| `PALENA_PSEUDONYMIZER_NER_ENTITY_LABELS` | `PERSON:person\|full_name\|first_name\|last_name,ORGANIZATION:organization` | `TYPE:label\|label,…`. |
+| `PALENA_PSEUDONYMIZER_NER_CHUNK_CHARS` | `1000` | ≥ 100. |
+| `PALENA_PSEUDONYMIZER_NER_CHUNK_OVERLAP` | `150` | `0 ≤ overlap < chunk / 2`. |
+| `PALENA_PSEUDONYMIZER_NER_BATCH_SIZE` | `16` | ≥ 1. |
+
+> **Why `ner` splits per line.** `text.NERDetector` sends every line on its own
+> (`splitUnits`), windowing lines over `NER_CHUNK_CHARS`. The model
+> (GLiNER2-PII, `deploy/ner`) has no input cap: past ~512 tokens it stops
+> finding names, its memory grows with the square of the length (>23 GB for
+> 48k characters), and in a window crowded with unrelated messages its
+> confidence on real names drops under the threshold. Per line it found every
+> name in 3k/12k/48k-character test conversations. The
+> types the model does not serve go to Presidio, in `PRESIDIO_LANGUAGE`.
+
 ## Presidio
 
 | Env var | Default | Notes |
@@ -105,7 +127,8 @@ across a conversation and reverses exactly (case and all).
 | Env var | Default | Notes |
 | --- | --- | --- |
 | `PALENA_PSEUDONYMIZER_DECOMPOSE_PERSON_NAMES` | `true` | Register first/last-name sub-mappings for multi-token PERSON names — see note below. |
-| `PALENA_PSEUDONYMIZER_ALLOW_LIST` | *(empty)* | Comma-separated terms never pseudonymized even when detected (brand/product names, public figures, words Presidio over-tags). Case-insensitive; also excluded from name decomposition. Symmetric to the org deny-list. |
+| `PALENA_PSEUDONYMIZER_ALLOW_LIST` | *(empty)* | Comma-separated terms never pseudonymized even when detected (brand/product names, public figures, words a detector over-tags). Case-insensitive, also with an inflection ending of up to five letters (`text.AllowListed`); a span with the term among other words is not matched. Also excluded from name decomposition. Symmetric to the org deny-list. |
+| `PALENA_PSEUDONYMIZER_ALLOW_LIST_BUILTIN` | `true` | Merge `text.BuiltinAllowList` (product/tool names that are not people's names). |
 | `PALENA_PSEUDONYMIZER_DETERMINISTIC_SECRET` | *(empty)* | When set, POOL assignment uses `HMAC-SHA256(secret, name)` over the pool so the same real value maps to the same pseudonym across sessions (stable/portable pseudonyms; probes forward on within-session collision). Reversal still uses the store. Token entities unaffected. Secret-grade. |
 
 **Collision hardening.** A freshly-minted pseudonym is never allowed to be a
@@ -125,6 +148,18 @@ pool candidates are skipped until a non-colliding one is found.
 > also stores `Alice → Jordan` and `Johnson → Avery` (aligned by position), so
 > both directions stay consistent. Longest-first matching still rewrites the
 > full name before the components.
+>
+> Components starting in lower case are never registered: they come from
+> lower-case names (whose full form stays mapped) or from false detections,
+> where a key like `hi` would rewrite that word in every later message.
+> `filterImplausible` also drops `PERSON` spans that cannot be a name (no
+> letters, more than five words, four or more lower-case words, one
+> lower-case word of three letters or fewer).
+>
+> **Stored mappings always apply.** `Pseudonymize` rewrites with the whole
+> session mapping even when the detector finds nothing new, so a name
+> detected in an earlier turn is never sent in clear because the detector
+> missed it this time.
 >
 > **Caveat:** a real surname that is also a common noun (`Baker`, `Green`,
 > `Cook`) will over-match that noun (case-insensitively) — producing garbled

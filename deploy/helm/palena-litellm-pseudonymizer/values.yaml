@@ -38,17 +38,28 @@ resources:
 config:
   logLevel: info          # debug | info | warn | error
   logFormat: json         # json | text
+  # ner      — PERSON from the bundled NER service (GLiNER2, one multilingual
+  #            model, no language detection; see `ner` below), pattern types
+  #            (email, phone, IBAN, card, IP, …) from Presidio.
+  # presidio — everything from Presidio's spaCy NER, one model per language
+  #            (config.language / config.languages).
+  detectionEngine: ner
   scoreThreshold: 0.7
-  # Entity types Presidio detects & pseudonymizes. Add structured PII to
-  # opt in: e.g. "PERSON,ORGANIZATION,CREDIT_CARD,US_SSN,EMAIL_ADDRESS".
+  # Entity types detected & pseudonymized. Add structured PII to opt in:
+  # e.g. "PERSON,EMAIL_ADDRESS,PHONE_NUMBER,IBAN_CODE,CREDIT_CARD".
+  # ORGANIZATION is off by default: product and tool names (Linux, Bitwarden,
+  # CLI) were most of the false positives. With detectionEngine ner it uses
+  # the model's zero-shot "organization" label — experimental, not benchmarked.
   # LOCATION is intentionally excluded by default (city drift).
-  entities: "PERSON,ORGANIZATION"
+  entities: "PERSON"
   # Per-type minimum score, overriding scoreThreshold: "TYPE:score,…".
   # Presidio scores every phone number 0.4, so without the default override
   # PHONE_NUMBER would never be masked under the 0.7 threshold.
   entityScoreThreshold: "PHONE_NUMBER:0.4"
-  # Language Presidio analyzes in, when `languages` is empty.
+  # Language Presidio analyzes in, when `languages` is empty. With
+  # detectionEngine ner this is the language of the pattern recognizers only.
   language: en
+  # detectionEngine presidio only (ignored with ner, which needs no language).
   # Several languages (en, de, fr, it): each message is classified among them
   # and analyzed in its own language; the first is the fallback for text too
   # short to classify. Anything other than English alone switches the
@@ -67,8 +78,16 @@ config:
   entityStrategy: ""
   decomposePersonNames: true
   # Terms never pseudonymized even when detected (your brand/product names,
-  # public figures, words Presidio over-tags). Comma-separated, case-insensitive.
+  # public figures, words a detector over-tags). Comma-separated,
+  # case-insensitive; also matches short inflected forms ("Linuxra",
+  # "Docker's"). A span with the term among other words ("Siri Johnson") is
+  # still pseudonymized.
   allowList: ""
+  # Add the built-in list of product, platform and tool names (ChatGPT,
+  # Bitwarden, Kubernetes, Linux, Heroku, Proton Pass, …). Names that are
+  # also people's names (Alexa, Siri, Claude, Jenkins, Kafka) are NOT in it —
+  # add them to allowList when your traffic is about the products.
+  allowListBuiltin: true
   maxRequestBytes: 33554432
   session:
     metadataKey: session_id
@@ -123,6 +142,41 @@ redis:
     enabled: false
     size: 1Gi
     storageClass: ""
+
+# ---------------------------------------------------------------------------
+# NER service (config.detectionEngine: ner): GLiNER2-PII on CPU, model baked
+# into the image (no network access needed at runtime).
+# ---------------------------------------------------------------------------
+ner:
+  # -- Bundle the NER service. Disable and set `url` to use your own.
+  enabled: true
+  url: ""   # external URL when enabled=false, e.g. http://ner:3000
+  image:
+    repository: ghcr.io/palenaai/palena-ner
+    # -- Defaults to the chart's appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  # -- Minimum span confidence (config.entityScoreThreshold overrides per type).
+  threshold: 0.9
+  # -- Entity type → model labels. A type is taken from the NER service only
+  #    when it is also in config.entities.
+  entityLabels: "PERSON:person|full_name|first_name|last_name,ORGANIZATION:organization"
+  # -- Every line (message) is analyzed on its own; lines longer than
+  #    chunkChars characters are cut into windows overlapping by chunkOverlap.
+  #    The model is trained on short inputs and stops finding names past
+  #    ~512 tokens, so keep chunkChars around 1000.
+  chunkChars: 1000
+  chunkOverlap: 150
+  # -- Texts per HTTP call from the pseudonymizer / per forward pass in the model.
+  requestBatchSize: 16
+  modelBatchSize: 8
+  timeoutSeconds: 10
+  # -- CPU threads torch uses; match resources.limits.cpu.
+  torchThreads: 2
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { cpu: "2", memory: 3Gi }
 
 # ---------------------------------------------------------------------------
 # Presidio (external PII detection).

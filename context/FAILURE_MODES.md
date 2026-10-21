@@ -41,6 +41,8 @@ non-zero 500 rate. Depedency failures show as 502.
 | Failure | Symptom | HTTP status | Response body | Effect (default `fail_closed`) |
 | --- | --- | --- | --- | --- |
 | Presidio Analyzer 5xx / timeout / connect refused | Cannot detect text PII | 502 | `{"error": "presidio_unreachable"}` | LLM call blocked |
+| NER service 5xx / 413 / timeout / connect refused (`ner` engine) | Cannot detect names | 502 | `{"error": "ner_unreachable"}` | LLM call blocked |
+| NER service returns malformed JSON or offsets outside the text | Detection broken | 502 | `{"error": "ner_unreachable"}` | LLM call blocked |
 | Presidio Image Redactor unreachable | Cannot detect image PII | 502 | `{"error": "image_redactor_unreachable"}` | LLM call blocked |
 | Redis unreachable | Cannot persist mapping | 502 | `{"error": "mapping_store_unreachable"}` | LLM call blocked |
 | Redis returns corrupt JSON in `mapping` field | Cannot deserialize existing state | 200 | `{"action": "GUARDRAIL_INTERVENED", …}` | Continue with empty mapping (fresh start); log ERROR; user has no cross-turn continuity but request proceeds |

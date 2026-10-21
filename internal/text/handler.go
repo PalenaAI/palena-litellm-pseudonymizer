@@ -21,15 +21,14 @@ type Analyzer interface {
 	Analyze(ctx context.Context, text string, entities []string, language string) ([]presidio.Detection, error)
 }
 
-// Handler orchestrates: analyze → assign pseudonyms → persist → rewrite.
+// Handler orchestrates: detect → assign pseudonyms → persist → rewrite.
 // It is the equivalent of the Python TextHandler.
 type Handler struct {
-	analyzer  Analyzer
+	detector  Detector
 	store     mapping.Store
 	strat     *Strategizer
 	replacer  *Replacer
 	entities  []string
-	language  language.Detector
 	decompose bool
 	allowList map[string]struct{} // lower-cased terms never pseudonymized
 	// threshold / thresholds: the minimum score per entity type (overrides,
@@ -41,6 +40,9 @@ type Handler struct {
 
 // HandlerConfig groups constructor parameters.
 type HandlerConfig struct {
+	// Detector finds the entities. When nil, a PresidioDetector is built
+	// from Analyzer, Entities and Language/Languages.
+	Detector Detector
 	Analyzer Analyzer
 	Store    mapping.Store
 	// Pools is used to build a default pool-only Strategizer when
@@ -71,26 +73,28 @@ type HandlerConfig struct {
 	EntityThresholds map[string]float64
 }
 
-// NewHandler builds a text handler. All fields are required except
-// Language/Languages, which default to "en".
+// NewHandler builds a text handler. Store, Entities and either Detector or
+// Analyzer are required; Language/Languages default to "en".
 func NewHandler(cfg HandlerConfig) *Handler {
-	codes := cfg.Languages
-	if len(codes) == 0 && cfg.Language != "" {
-		codes = []string{cfg.Language}
+	det := cfg.Detector
+	if det == nil {
+		codes := cfg.Languages
+		if len(codes) == 0 && cfg.Language != "" {
+			codes = []string{cfg.Language}
+		}
+		det = &PresidioDetector{Analyzer: cfg.Analyzer, Entities: cfg.Entities, Language: language.New(codes)}
 	}
-	lang := language.New(codes)
 	strat := cfg.Strategizer
 	if strat == nil {
 		// Backward-compatible default: everything uses the pool strategy.
 		strat = NewStrategizer(StrategizerConfig{Pools: cfg.Pools, Default: string(StrategyPool)})
 	}
 	return &Handler{
-		analyzer:  cfg.Analyzer,
+		detector:  det,
 		store:     cfg.Store,
 		strat:     strat,
 		replacer:  NewReplacer(),
 		entities:  cfg.Entities,
-		language:  lang,
 		decompose: cfg.DecomposePersonNames,
 		allowList: cfg.AllowList,
 
@@ -113,12 +117,15 @@ type PseudonymizeResult struct {
 
 // Pseudonymize runs the pre-call flow for a single text string.
 //
-//  1. Analyze via Presidio (fail-closed).
-//  2. Filter to configured entity types.
+//  1. Detect (fail-closed).
+//  2. Filter to configured entity types, scores, the allow-list and
+//     plausible names.
 //  3. Load existing session mapping.
 //  4. Assign new pseudonyms (existing entries win).
 //  5. Persist the merged mapping.
-//  6. Rewrite the text with the merged mapping.
+//  6. Rewrite the text with the merged mapping — also when nothing new was
+//     detected: a name mapped in an earlier turn must not reach the model in
+//     clear just because the detector missed it this time.
 func (h *Handler) Pseudonymize(ctx context.Context, text, sessionID string) (*PseudonymizeResult, error) {
 	res := &PseudonymizeResult{
 		Text:             text,
@@ -128,13 +135,14 @@ func (h *Handler) Pseudonymize(ctx context.Context, text, sessionID string) (*Ps
 		return res, nil
 	}
 
-	detections, err := h.analyzer.Analyze(ctx, text, h.entities, h.language.Detect(text))
+	detections, err := h.detector.Detect(ctx, text)
 	if err != nil {
 		return nil, err
 	}
 	filtered := filterByEntityType(detections, h.entities)
 	filtered = h.filterScore(filtered)
 	filtered = h.filterAllowList(filtered)
+	filtered = filterImplausible(filtered)
 	res.EntitiesDetected = len(filtered)
 
 	for _, d := range filtered {
@@ -147,6 +155,7 @@ func (h *Handler) Pseudonymize(ctx context.Context, text, sessionID string) (*Ps
 			return nil, err
 		}
 		res.SessionMappingSize = len(merged)
+		res.Text = h.replacer.Replace(text, merged)
 		return res, nil
 	}
 
@@ -345,16 +354,16 @@ func (h *Handler) filterScore(detections []presidio.Detection) []presidio.Detect
 }
 
 // filterAllowList drops detections whose span text is on the allow-list
-// (case-insensitive). These terms are never pseudonymized — brand/product
-// names, public figures, or words Presidio over-tags. No-op when the
-// allow-list is empty.
+// (case-insensitive), also in an inflected form (see AllowListed). These
+// terms are never pseudonymized — brand/product names, public figures, or
+// words a detector over-tags. No-op when the allow-list is empty.
 func (h *Handler) filterAllowList(detections []presidio.Detection) []presidio.Detection {
 	if len(h.allowList) == 0 {
 		return detections
 	}
 	out := make([]presidio.Detection, 0, len(detections))
 	for _, d := range detections {
-		if _, ok := h.allowList[strings.ToLower(strings.TrimSpace(d.Text))]; ok {
+		if AllowListed(h.allowList, d.Text) {
 			continue
 		}
 		out = append(out, d)

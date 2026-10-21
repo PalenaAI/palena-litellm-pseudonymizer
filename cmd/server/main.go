@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/httpapi"
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/image"
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/mapping"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/ner"
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/presidio"
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/pseudonymizer"
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/text"
@@ -84,8 +86,40 @@ func run() error {
 	// words Presidio over-tags). Shared by the text and image handlers.
 	allowList := cfg.AllowListSet()
 
+	// Detection engine.
+	thresholds := cfg.EntityThresholds()
+	var detector text.Detector
+	var nerPinger httpapi.Pinger
+	if cfg.DetectionEngine == "ner" {
+		labels, patternEntities := text.NERLabelsFor(cfg.NERLabels(), cfg.Entities)
+		// NER types are judged by NER_THRESHOLD unless ENTITY_SCORE_THRESHOLD
+		// names them; the service is asked for the lowest of those.
+		nerMin := cfg.NERThreshold
+		for _, typ := range labels {
+			if _, set := thresholds[typ]; !set {
+				thresholds[typ] = cfg.NERThreshold
+			}
+			nerMin = min(nerMin, thresholds[typ])
+		}
+		client := ner.New(ner.Config{BaseURL: cfg.NERURL, Timeout: cfg.NERTimeout, BatchSize: cfg.NERBatchSize})
+		nerPinger = client
+		detector = &text.NERDetector{
+			NER:             client,
+			Labels:          labels,
+			Threshold:       nerMin,
+			ChunkChars:      cfg.NERChunkChars,
+			ChunkOverlap:    cfg.NERChunkOverlap,
+			Analyzer:        analyzer,
+			PatternEntities: patternEntities,
+			PatternLanguage: cfg.Language,
+		}
+		logger.Info("detection engine: ner", "ner_url", cfg.NERURL, "ner_entities", uniqueValues(labels),
+			"pattern_entities", patternEntities, "pattern_language", cfg.Language)
+	}
+
 	// Text handler
 	textHandler := text.NewHandler(text.HandlerConfig{
+		Detector:             detector,
 		Analyzer:             analyzer,
 		Store:                store,
 		Strategizer:          strategizer,
@@ -94,7 +128,7 @@ func run() error {
 		DecomposePersonNames: cfg.DecomposePersonNames,
 		AllowList:            allowList,
 		ScoreThreshold:       cfg.ScoreThreshold,
-		EntityThresholds:     cfg.EntityThresholds(),
+		EntityThresholds:     thresholds,
 	})
 
 	// Image handler
@@ -144,6 +178,7 @@ func run() error {
 		SessionsHandler:     sessions,
 		Store:               store,
 		ImageRedactorPinger: imageRedactor,
+		NERPinger:           nerPinger,
 		ReadinessTimeout:    cfg.PresidioReadiness,
 		Registry:            registry,
 		Logger:              logger,
@@ -172,6 +207,7 @@ func run() error {
 			"metadata_key", cfg.SessionMetadataKey,
 			"max_request_bytes", cfg.MaxRequestBytes,
 			"entities", cfg.Entities,
+			"detection_engine", cfg.DetectionEngine,
 		)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
@@ -213,6 +249,20 @@ func newLogger(level, format string) *slog.Logger {
 		return slog.New(slog.NewTextHandler(os.Stdout, opts))
 	}
 	return slog.New(slog.NewJSONHandler(os.Stdout, opts))
+}
+
+// uniqueValues returns the sorted distinct values of m.
+func uniqueValues(m map[string]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, v := range m {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // redactRedisURL strips inline credentials before logging.

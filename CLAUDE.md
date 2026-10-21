@@ -59,6 +59,7 @@ palena-litellm-pseudonymizer-service/
 │   ├── text/                  # replacer, pools, streaming holdback
 │   ├── image/                 # image PII flow
 │   ├── presidio/              # analyzer + image redactor clients
+│   ├── ner/                   # NER service client (DETECTION_ENGINE=ner)
 │   ├── mapping/               # Redis-backed session mapping
 │   ├── session/               # session-id derivation from LiteLLM request
 │   └── audit/                 # counter helpers (no-PII invariant enforced)
@@ -75,6 +76,7 @@ palena-litellm-pseudonymizer-service/
 │   └── .vitepress/            # (published; not agent context — see context/)
 ├── deploy/
 │   ├── presidio/              # Presidio configs (NER-ORG + deny-list)
+│   ├── ner/                   # NER service (Python, GLiNER2-PII; own image)
 │   └── helm/                  # Helm chart
 └── testdata/                  # golden fixtures for text pipeline tests
 ```
@@ -87,6 +89,18 @@ implementation contracts live in `context/`; user-facing how-to lives in
 **Read `context/IMPLEMENTATION_PLAN.md` before writing code.** It sequences the
 milestones (M1 text-only, M2 images, M3 streaming, M4 packaging) and lists
 the exact files each milestone touches.
+
+## Detection engines
+
+`text.Detector` is the seam: `PresidioDetector` (spaCy NER per language, the
+`presidio` engine) or `NERDetector` (`ner` engine — names from the NER service
+in `deploy/ner`, pattern types from Presidio in `PRESIDIO_LANGUAGE`). The NER
+detector analyzes **one line at a time** (`splitUnits`, long lines windowed):
+the model stops finding names in long or crowded inputs and its memory grows
+with the square of the length — never send it a whole conversation. Offsets
+from the service are characters; convert with `charToByte`. Measure a detector
+or model change on a labelled multilingual test set before it ships. The NER service never
+logs request text. Test it with `NER_SKIP_APP=1 python -m pytest deploy/ner`.
 
 ## HTTP contract we serve
 

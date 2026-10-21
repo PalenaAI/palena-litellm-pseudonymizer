@@ -30,9 +30,11 @@ type RouterConfig struct {
 	Store               mapping.Store
 	AnalyzerPinger      Pinger
 	ImageRedactorPinger Pinger
-	ReadinessTimeout    time.Duration
-	Registry            *prometheus.Registry
-	Logger              *slog.Logger
+	// NERPinger is set when DETECTION_ENGINE=ner.
+	NERPinger        Pinger
+	ReadinessTimeout time.Duration
+	Registry         *prometheus.Registry
+	Logger           *slog.Logger
 }
 
 // NewRouter constructs a chi mux with all endpoints wired.
@@ -74,6 +76,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		}
 		checkPing("presidio_analyzer", cfg.AnalyzerPinger)
 		checkPing("presidio_image_redactor", cfg.ImageRedactorPinger)
+		checkPing("ner", cfg.NERPinger)
 
 		w.Header().Set("Content-Type", "application/json")
 		if !out.Ready {

@@ -84,3 +84,57 @@ func TestLoad_EntityThresholds(t *testing.T) {
 	_, err = Load()
 	require.ErrorContains(t, err, "ENTITY_SCORE_THRESHOLD")
 }
+
+func TestLoad_DetectionEngineDefaultsToPresidio(t *testing.T) {
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "presidio", cfg.DetectionEngine)
+}
+
+func TestLoad_NEREngine(t *testing.T) {
+	t.Setenv("PALENA_PSEUDONYMIZER_DETECTION_ENGINE", "ner")
+	t.Setenv("PALENA_PSEUDONYMIZER_NER_URL", "http://ner:3000")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.InDelta(t, 0.9, cfg.NERThreshold, 1e-9)
+	require.Equal(t, map[string]string{
+		"person": "PERSON", "full_name": "PERSON", "first_name": "PERSON", "last_name": "PERSON",
+		"organization": "ORGANIZATION",
+	}, cfg.NERLabels())
+}
+
+func TestLoad_NEREngineRejectsBadSettings(t *testing.T) {
+	for env, val := range map[string]string{
+		"PALENA_PSEUDONYMIZER_DETECTION_ENGINE":  "spacy",
+		"PALENA_PSEUDONYMIZER_NER_URL":           "ner:3000",
+		"PALENA_PSEUDONYMIZER_NER_THRESHOLD":     "1.2",
+		"PALENA_PSEUDONYMIZER_NER_CHUNK_CHARS":   "50",
+		"PALENA_PSEUDONYMIZER_NER_CHUNK_OVERLAP": "600",
+		"PALENA_PSEUDONYMIZER_NER_ENTITY_LABELS": "PERSON",
+		"PALENA_PSEUDONYMIZER_NER_BATCH_SIZE":    "0",
+	} {
+		t.Run(env, func(t *testing.T) {
+			if env != "PALENA_PSEUDONYMIZER_DETECTION_ENGINE" {
+				t.Setenv("PALENA_PSEUDONYMIZER_DETECTION_ENGINE", "ner")
+			}
+			t.Setenv(env, val)
+			_, err := Load()
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestAllowListSet_MergesBuiltin(t *testing.T) {
+	t.Setenv("PALENA_PSEUDONYMIZER_ALLOW_LIST", "Navique, Alexa")
+	cfg, err := Load()
+	require.NoError(t, err)
+	set := cfg.AllowListSet()
+	require.Contains(t, set, "navique")
+	require.Contains(t, set, "alexa")
+	require.Contains(t, set, "proton pass", "built-in list is on by default")
+
+	t.Setenv("PALENA_PSEUDONYMIZER_ALLOW_LIST_BUILTIN", "false")
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.Equal(t, map[string]struct{}{"navique": {}, "alexa": {}}, cfg.AllowListSet())
+}

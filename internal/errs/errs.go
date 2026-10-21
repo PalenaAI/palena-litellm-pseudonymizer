@@ -21,6 +21,14 @@ var (
 	// response we cannot decode. HTTP maps to 502 on pre-call.
 	ErrPresidioMalformed = errors.New("presidio_malformed")
 
+	// ErrNERUnavailable is returned when the NER service is unreachable,
+	// times out, or answers non-2xx. HTTP maps to 502 on pre-call.
+	ErrNERUnavailable = errors.New("ner_unreachable")
+
+	// ErrNERMalformed is returned when the NER service returns a body we
+	// cannot decode or that does not match the request. HTTP maps to 502.
+	ErrNERMalformed = errors.New("ner_malformed")
+
 	// ErrMappingStoreUnavailable is returned when Redis is unreachable
 	// or a Redis command fails. HTTP maps to 502 on pre-call.
 	ErrMappingStoreUnavailable = errors.New("mapping_store_unreachable")

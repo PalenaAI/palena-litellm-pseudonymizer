@@ -16,6 +16,8 @@ header:
     - "cmd/**/*.go"
     - "internal/**/*.go"
     - "deploy/Dockerfile"
+    - "deploy/ner/*.py"
+    - "deploy/ner/Dockerfile"
     - ".github/workflows/*.yml"
 
   paths-ignore:

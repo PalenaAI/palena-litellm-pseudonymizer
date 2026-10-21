@@ -54,9 +54,9 @@ against the same `API_KEY` value. When `API_KEY` is unset the service runs open
 
 | Wäg phase | Service behaviour |
 | --- | --- |
-| `pre_call` | Pseudonymize the prompt — real names out, pseudonyms in |
+| `pre_call` | Pseudonymize the prompt — real names out, pseudonyms in (each message, and the string values in earlier tool calls' arguments) |
 | `during_call` | Reverse the pending stream window, return `hold_chars` for an incomplete trailing name |
-| `post_call` | Reverse the complete assistant text |
+| `post_call` | Reverse the complete assistant text and the string values in the answer's tool-call arguments |
 
 `during_call` reads `pending` (the uncommitted window) in preference to the
 cumulative text, because committed SSE bytes can never be rewritten. Incomplete
@@ -88,17 +88,20 @@ For plain API traffic where no session fingerprint exists, set
 derived by keyed HMAC and stay stable across sessions without any session id at
 all.
 
-## Known limitation: multi-turn `pre_call`
+## Multi-turn conversations and tool calls
 
-When a guardrail returns a mask on `pre_call`, Wäg joins every message into one
-string, applies the rewrite, and writes the result into the **last user
-message** without clearing the earlier ones. A multi-turn conversation that
-gets pseudonymized therefore reaches the provider with its history duplicated.
+On `pre_call` Wäg first sends the whole conversation, one message per line;
+when this service masks anything, Wäg asks again message by message and writes
+each result back **in place**, so the history is never duplicated or merged.
+With the `ner` engine this service analyzes every line on its own anyway, so
+a long conversation never reaches the model as one oversized input.
 
-This is gateway-side behaviour affecting any masking guardrail in Wäg, not
-something this service can correct from its side. Until it is addressed
-upstream, prefer `mode: [during_call, post_call]` with single-turn requests, or
-accept the duplication for short conversations.
+Tool calls are covered in both directions (Wäg with tool-call screening): the
+string values in earlier calls' arguments are pseudonymized like message text,
+and the calls in the model's answer are reversed on `post_call`, so the
+client's tool runs with the real name. While a `post_call` item applies, Wäg
+holds a streamed answer's tool-call deltas and sends the reversed calls with
+the end of the answer; the text itself still streams.
 
 ## Verifying
 

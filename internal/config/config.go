@@ -16,6 +16,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/language"
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/text"
 )
 
 // Config is the parsed shape. Env vars are read with the
@@ -29,6 +30,33 @@ type Config struct {
 	HTTPWriteTimeout   time.Duration `envconfig:"HTTP_WRITE_TIMEOUT" default:"30s"`
 	HTTPIdleTimeout    time.Duration `envconfig:"HTTP_IDLE_TIMEOUT" default:"120s"`
 	HTTPMaxHeaderBytes int           `envconfig:"HTTP_MAX_HEADER_BYTES" default:"1048576"`
+
+	// Detection engine: "presidio" analyzes every entity type with Presidio
+	// (spaCy NER per language); "ner" takes PERSON (and any other type in
+	// NER_ENTITY_LABELS) from the NER service — one multilingual span model,
+	// no language detection — and only the pattern types (email, phone,
+	// IBAN, card, IP, …) from Presidio, always in PRESIDIO_LANGUAGE.
+	DetectionEngine string `envconfig:"DETECTION_ENGINE" default:"presidio"`
+
+	// NER service (DETECTION_ENGINE=ner).
+	NERURL     string        `envconfig:"NER_URL" default:"http://ner:3000"`
+	NERTimeout time.Duration `envconfig:"NER_TIMEOUT_SECONDS" default:"10s"`
+	// NERThreshold is the minimum span confidence; ENTITY_SCORE_THRESHOLD
+	// overrides it per entity type.
+	NERThreshold float64 `envconfig:"NER_THRESHOLD" default:"0.9"`
+	// NEREntityLabels maps entity types to model labels:
+	// "PERSON:person|full_name|first_name|last_name,ORGANIZATION:organization".
+	// A type is taken from the NER service only when it is also in
+	// PRESIDIO_ENTITIES. ORGANIZATION via the zero-shot "organization" label
+	// is experimental (not benchmarked).
+	NEREntityLabels []string `envconfig:"NER_ENTITY_LABELS" default:"PERSON:person|full_name|first_name|last_name,ORGANIZATION:organization"`
+	// Each line (a Wäg joined scan puts one message per line) is analyzed
+	// on its own; lines longer than NER_CHUNK_CHARS characters are cut into
+	// windows overlapping by NER_CHUNK_OVERLAP characters.
+	NERChunkChars   int `envconfig:"NER_CHUNK_CHARS" default:"1000"`
+	NERChunkOverlap int `envconfig:"NER_CHUNK_OVERLAP" default:"150"`
+	// NERBatchSize caps the texts sent to the NER service per HTTP call.
+	NERBatchSize int `envconfig:"NER_BATCH_SIZE" default:"16"`
 
 	// Presidio
 	AnalyzerURL       string        `envconfig:"PRESIDIO_ANALYZER_URL" default:"http://presidio-analyzer:5001"`
@@ -72,6 +100,9 @@ type Config struct {
 	// case-insensitively against the detected span text. The symmetric
 	// counterpart to the organization deny-list.
 	AllowList []string `envconfig:"ALLOW_LIST"`
+	// AllowListBuiltin adds text.BuiltinAllowList (common product, platform
+	// and tool names that are not also people's names) to ALLOW_LIST.
+	AllowListBuiltin bool `envconfig:"ALLOW_LIST_BUILTIN" default:"true"`
 
 	// DeterministicSecret, when set, switches POOL assignment from a
 	// per-session counter to a keyed HMAC of the real value: the same real
@@ -205,14 +236,37 @@ func (c *Config) MinScoreThreshold() float64 {
 	return m
 }
 
-// AllowListSet returns the allow-list as a set of lower-cased, trimmed
-// terms for O(1) case-insensitive lookup. Empty entries are dropped.
+// AllowListSet returns the allow-list (ALLOW_LIST, plus the built-in list
+// unless ALLOW_LIST_BUILTIN=false) as a set of lower-cased, trimmed terms for
+// O(1) case-insensitive lookup. Empty entries are dropped.
 func (c *Config) AllowListSet() map[string]struct{} {
-	out := make(map[string]struct{}, len(c.AllowList))
-	for _, term := range c.AllowList {
+	terms := c.AllowList
+	if c.AllowListBuiltin {
+		terms = append(append([]string{}, terms...), text.BuiltinAllowList...)
+	}
+	out := make(map[string]struct{}, len(terms))
+	for _, term := range terms {
 		t := strings.ToLower(strings.TrimSpace(term))
 		if t != "" {
 			out[t] = struct{}{}
+		}
+	}
+	return out
+}
+
+// NERLabels parses NER_ENTITY_LABELS into model label → entity type.
+// Invalid entries are surfaced by Validate, not here.
+func (c *Config) NERLabels() map[string]string {
+	out := map[string]string{}
+	for _, pair := range c.NEREntityLabels {
+		typ, labels, ok := strings.Cut(strings.TrimSpace(pair), ":")
+		if !ok {
+			continue
+		}
+		for _, l := range strings.Split(labels, "|") {
+			if l = strings.TrimSpace(l); l != "" {
+				out[l] = strings.TrimSpace(typ)
+			}
 		}
 	}
 	return out
@@ -222,6 +276,37 @@ func (c *Config) AllowListSet() map[string]struct{} {
 func (c *Config) Validate() error {
 	if _, err := url.Parse(c.AnalyzerURL); err != nil {
 		return fmt.Errorf("invalid PRESIDIO_ANALYZER_URL: %w", err)
+	}
+	switch c.DetectionEngine {
+	case "presidio":
+	case "ner":
+		if u, err := url.Parse(c.NERURL); err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("invalid NER_URL %q: must be an absolute http(s) URL", c.NERURL)
+		}
+		if c.NERThreshold < 0 || c.NERThreshold > 1 {
+			return errors.New("NER_THRESHOLD must be in [0.0, 1.0]")
+		}
+		if c.NERChunkChars < 100 {
+			return errors.New("NER_CHUNK_CHARS must be >= 100")
+		}
+		if c.NERChunkOverlap < 0 || c.NERChunkOverlap >= c.NERChunkChars/2 {
+			return errors.New("NER_CHUNK_OVERLAP must be >= 0 and below NER_CHUNK_CHARS / 2")
+		}
+		if c.NERBatchSize < 1 {
+			return errors.New("NER_BATCH_SIZE must be >= 1")
+		}
+		for _, pair := range c.NEREntityLabels {
+			p := strings.TrimSpace(pair)
+			if p == "" {
+				continue
+			}
+			typ, labels, ok := strings.Cut(p, ":")
+			if !ok || strings.TrimSpace(typ) == "" || strings.Trim(labels, "| ") == "" {
+				return fmt.Errorf("NER_ENTITY_LABELS entry %q must be TYPE:label|label", p)
+			}
+		}
+	default:
+		return fmt.Errorf("DETECTION_ENGINE must be presidio|ner, got %q", c.DetectionEngine)
 	}
 	if _, err := url.Parse(c.ImageRedactorURL); err != nil {
 		return fmt.Errorf("invalid PRESIDIO_IMAGE_REDACTOR_URL: %w", err)

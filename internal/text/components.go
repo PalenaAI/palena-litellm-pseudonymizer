@@ -73,9 +73,16 @@ func ComponentMappings(real, pseudo string) map[string]string {
 
 // isSafeComponent rejects tokens that would over-match if used as a
 // standalone replacement key: single initials ("J."), punctuation-only
-// fragments, or anything with fewer than two letters.
+// fragments, anything with fewer than two letters, and words starting in
+// lower case. A lower-case component is either a lower-case name ("thomas
+// huber" — the full name stays mapped) or a false detection, and in the
+// second case a key like "hi" or "which" would rewrite that word in every
+// later message of the session.
 func isSafeComponent(token string) bool {
 	if utf8.RuneCountInString(token) < 2 {
+		return false
+	}
+	if first, _ := utf8.DecodeRuneInString(token); unicode.IsLower(first) {
 		return false
 	}
 	letters := 0

@@ -64,6 +64,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  ner-service:
+    name: NER service tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      # The tests use a stand-in model: no torch, no model download.
+      - name: Test
+        working-directory: deploy/ner
+        env:
+          NER_SKIP_APP: "1"
+        run: |
+          python -m pip install -r requirements-test.txt
+          python -m pytest -q test_app.py
+
   security:
     name: Security Scans (Semgrep + Hadolint)
     runs-on: ubuntu-latest

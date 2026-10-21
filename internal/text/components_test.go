@@ -45,3 +45,10 @@ func TestComponentMappings_DegenerateRepeatedNameSkipsLast(t *testing.T) {
 	got := ComponentMappings("John John", "Jordan Avery")
 	require.Equal(t, map[string]string{"John": "Jordan"}, got)
 }
+
+func TestComponentMappings_SkipsLowercaseComponents(t *testing.T) {
+	// A lower-case component would become a bare-word key ("hi", "mgr")
+	// rewriting that word in every later message of the session.
+	require.Nil(t, ComponentMappings("hi which passwd mgr", "Taylor Morgan"))
+	require.Equal(t, map[string]string{"Huber": "Avery"}, ComponentMappings("thomas Huber", "Jordan Avery"))
+}

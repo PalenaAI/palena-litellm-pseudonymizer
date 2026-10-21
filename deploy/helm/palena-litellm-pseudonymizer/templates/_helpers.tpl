@@ -74,6 +74,18 @@ app.kubernetes.io/component: pseudonymizer
 {{- define "pseudonymizer.imageRedactor.fullname" -}}
 {{- printf "%s-presidio-image-redactor" (include "pseudonymizer.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+{{- define "pseudonymizer.ner.fullname" -}}
+{{- printf "%s-ner" (include "pseudonymizer.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/* Resolved NER service URL (detectionEngine ner): bundled service or ner.url. */}}
+{{- define "pseudonymizer.nerURL" -}}
+{{- if .Values.ner.enabled -}}
+{{- printf "http://%s:3000" (include "pseudonymizer.ner.fullname" .) -}}
+{{- else -}}
+{{- required "ner.url is required when config.detectionEngine=ner and ner.enabled=false" .Values.ner.url -}}
+{{- end -}}
+{{- end -}}
 
 {{/* Resolved Redis URL: bundled service name or the external url. */}}
 {{- define "pseudonymizer.redisURL" -}}
@@ -102,6 +114,15 @@ app.kubernetes.io/component: pseudonymizer
 {{- end -}}
 {{- end -}}
 
+{{/* The detection engine, validated. */}}
+{{- define "pseudonymizer.detectionEngine" -}}
+{{- $e := .Values.config.detectionEngine -}}
+{{- if not (has $e (list "ner" "presidio")) -}}
+{{- fail (printf "config.detectionEngine must be ner or presidio, got %q" $e) -}}
+{{- end -}}
+{{- $e -}}
+{{- end -}}
+
 {{/* Whether the analyzer needs a mounted config (NER-ORG on, a deny-list, or more than English). */}}
 {{- define "pseudonymizer.analyzer.needsConfig" -}}
 {{- if or .Values.presidio.analyzer.nerOrganization (include "pseudonymizer.analyzer.needsRecognizers" .) (include "pseudonymizer.multilingual" .) -}}
@@ -112,9 +133,15 @@ true
 {{/*
 Languages Presidio analyzes in, comma-separated: config.languages, else
 config.language. Each must have a bundled spaCy model (see spacyModel).
+With detectionEngine ner, Presidio only runs the pattern recognizers, which
+are language-independent: config.language alone, never the multilingual
+image — config.languages is ignored.
 */}}
 {{- define "pseudonymizer.languages" -}}
 {{- $langs := .Values.config.languages | default (list .Values.config.language) -}}
+{{- if eq .Values.config.detectionEngine "ner" -}}
+{{- $langs = list .Values.config.language -}}
+{{- end -}}
 {{- $out := list -}}
 {{- range $langs -}}
 {{- $l := . | toString | trim | lower -}}

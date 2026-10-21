@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **NER detection engine.** `DETECTION_ENGINE=ner` (the chart's new default,
+  `config.detectionEngine`) takes person names from a new NER service —
+  GLiNER2-PII, one multilingual span model, no language detection — and only
+  the pattern types (email, phone, IBAN, card, IP, …) from Presidio. Each line
+  is analyzed on its own and long lines in overlapping windows
+  (`NER_CHUNK_CHARS` / `NER_CHUNK_OVERLAP`): the model stops finding names in
+  long inputs and its memory grows with the square of the length. Person-name
+  F1 on an en/de/fr/it/hu test set: 0.87 against 0.76 for per-language spaCy;
+  0.88 across 15 European languages. Settings: `NER_URL`, `NER_THRESHOLD` (0.9), `NER_ENTITY_LABELS`, `NER_BATCH_SIZE`, `NER_TIMEOUT_SECONDS`; the NER
+  service is part of `/readyz`.
+- **NER service image** `ghcr.io/palenaai/palena-ner` (published with each
+  release, `deploy/ner`): CPU-only, pinned model revision baked in, runs
+  without network access. The chart deploys it with `config.detectionEngine:
+  ner` (`ner.*` values; ~2 Gi memory).
+- **Built-in allow-list** of product, platform and tool names that are not
+  also people's names (ChatGPT, Bitwarden, KeePassXC, 1Password, Proton Pass,
+  Linux, Docker, Kubernetes, Heroku, …), added unless `ALLOW_LIST_BUILTIN=false`.
+
+### Changed
+
+- **Allow-list matches inflected forms**: a term followed by an ending of up to
+  five letters (optionally after `-` or `'`) is allow-listed too (`Linux` →
+  `Linuxra`, `Linux's`).
+- **Chart defaults**: `config.detectionEngine: ner` and `config.entities:
+  PERSON` (was `PERSON,ORGANIZATION`). Product and tool names were most of the
+  false organizations; `ORGANIZATION` via the NER service's zero-shot label is
+  experimental. With the `ner` engine the chart ignores `config.languages` and
+  keeps Presidio on the stock English image. Set `config.detectionEngine:
+  presidio` for the previous behaviour.
+
+### Fixed
+
+- **A name mapped in an earlier turn was sent in clear when the detector missed
+  it later.** The stored session mapping now applies even when nothing new is
+  detected.
+- **Ordinary words were pseudonymized as people.** `PERSON` spans that cannot
+  be a name are dropped (no letters, more than five words, four or more
+  lower-case words such as `hi which passwd mgr`, one lower-case word of up to
+  three letters such as `mgr`), and name decomposition no longer registers
+  components that start in lower case — a false detection used to leave keys
+  like `hi` that rewrote that word for the rest of the session.
+
 ## [0.5.0] - 2026-10-09
 
 ### Added

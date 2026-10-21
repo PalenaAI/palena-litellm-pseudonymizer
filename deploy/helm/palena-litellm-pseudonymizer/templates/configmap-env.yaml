@@ -12,6 +12,17 @@ data:
   # large one in scientific notation ("3.3554432e+07"), which the service rejects
   # with strconv.ParseInt: invalid syntax.
   PALENA_PSEUDONYMIZER_MAX_REQUEST_BYTES: {{ .Values.config.maxRequestBytes | int64 | quote }}
+  # Detection engine
+  PALENA_PSEUDONYMIZER_DETECTION_ENGINE: {{ include "pseudonymizer.detectionEngine" . | quote }}
+  {{- if eq .Values.config.detectionEngine "ner" }}
+  PALENA_PSEUDONYMIZER_NER_URL: {{ include "pseudonymizer.nerURL" . | quote }}
+  PALENA_PSEUDONYMIZER_NER_THRESHOLD: {{ .Values.ner.threshold | quote }}
+  PALENA_PSEUDONYMIZER_NER_ENTITY_LABELS: {{ .Values.ner.entityLabels | quote }}
+  PALENA_PSEUDONYMIZER_NER_CHUNK_CHARS: {{ .Values.ner.chunkChars | int | quote }}
+  PALENA_PSEUDONYMIZER_NER_CHUNK_OVERLAP: {{ .Values.ner.chunkOverlap | int | quote }}
+  PALENA_PSEUDONYMIZER_NER_BATCH_SIZE: {{ .Values.ner.requestBatchSize | int | quote }}
+  PALENA_PSEUDONYMIZER_NER_TIMEOUT_SECONDS: {{ printf "%vs" .Values.ner.timeoutSeconds | quote }}
+  {{- end }}
   # Presidio
   PALENA_PSEUDONYMIZER_PRESIDIO_ANALYZER_URL: {{ include "pseudonymizer.analyzerURL" . | quote }}
   PALENA_PSEUDONYMIZER_PRESIDIO_IMAGE_REDACTOR_URL: {{ include "pseudonymizer.imageRedactorURL" . | quote }}
@@ -35,6 +46,7 @@ data:
   PALENA_PSEUDONYMIZER_SESSION_METADATA_KEY: {{ .Values.config.session.metadataKey | quote }}
   PALENA_PSEUDONYMIZER_DECOMPOSE_PERSON_NAMES: {{ .Values.config.decomposePersonNames | quote }}
   PALENA_PSEUDONYMIZER_ALLOW_LIST: {{ .Values.config.allowList | quote }}
+  PALENA_PSEUDONYMIZER_ALLOW_LIST_BUILTIN: {{ .Values.config.allowListBuiltin | quote }}
   # Non-text content
   PALENA_PSEUDONYMIZER_NON_TEXT_PII_ACTION: {{ .Values.config.nonText.piiAction | quote }}
   PALENA_PSEUDONYMIZER_MAX_IMAGE_BYTES: {{ .Values.config.nonText.maxImageBytes | int64 | quote }}

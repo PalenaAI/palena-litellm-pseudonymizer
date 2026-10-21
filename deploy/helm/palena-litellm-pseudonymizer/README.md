@@ -11,11 +11,12 @@ helm install pseudonymizer ./deploy/helm/palena-litellm-pseudonymizer \
 ```
 
 By default this brings up the guardrail service plus a single-instance
-Redis and both Presidio services — a self-contained stack good for a PoC.
+Redis, the NER service (person names, any language) and both Presidio
+services (pattern types and images) — a self-contained stack good for a PoC.
 For production, disable the bundled dependencies and point at managed ones
 (see below).
 
-## Organization detection
+## Organization detection (`config.detectionEngine: presidio`)
 
 `ORGANIZATION` masking has two layers, both configured here:
 
@@ -66,14 +67,18 @@ After install, `helm` prints the service URL and a ready-to-paste
 | --- | --- | --- |
 | `replicaCount` | `2` | Guardrail service replicas. |
 | `image.repository` / `image.tag` | GHCR / appVersion | Service image. |
-| `config.entities` | `PERSON,ORGANIZATION` | LOCATION excluded (geography drift). |
+| `config.detectionEngine` | `ner` | `ner`: names from the bundled NER service (GLiNER2-PII, no language detection); `presidio`: spaCy per language. |
+| `config.entities` | `PERSON` | ORGANIZATION off by default (product names); LOCATION excluded (geography drift). |
+| `config.allowListBuiltin` | `true` | Built-in product/tool allow-list (no people's names). |
+| `ner.threshold` / `ner.chunkChars` | `0.9` / `1000` | Span confidence; line window size. |
+| `ner.resources` | 2Gi / 3Gi | Model needs ~2 Gi. |
 | `config.decomposePersonNames` | `true` | First/last-name sub-mappings. |
 | `apiKey.enabled` | `false` | Enable + set `value`/`existingSecret` to require `x-api-key`. |
 | `redis.enabled` | `true` | Bundle Redis; disable + set `url` for external. |
 | `presidio.analyzer.nerOrganization` | `true` | spaCy ORG detection. |
 | `presidio.analyzer.organizations` | `[]` | Deny-list of known org names. |
 | `presidio.analyzer.denyLists` | `[]` | Deny-lists for any entity type (`- entity: PERSON` / `terms: [...]`). |
-| `config.languages` | `[]` | Several languages (`en`, `de`, `fr`, `it`): each message is analyzed in its own; switches to `presidio.analyzer.multilingualImage`. ~800Mi analyzer memory per extra language. |
+| `config.languages` | `[]` | `presidio` engine only. Several languages (`en`, `de`, `fr`, `it`): each message is analyzed in its own; switches to `presidio.analyzer.multilingualImage`. ~800Mi analyzer memory per extra language. |
 | `config.entityScoreThreshold` | `PHONE_NUMBER:0.4` | Per-type minimum score. |
 | `autoscaling.enabled` | `false` | HPA on CPU. |
 | `serviceMonitor.enabled` | `false` | Prometheus Operator scrape of `/metrics`. |

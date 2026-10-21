@@ -66,7 +66,46 @@ Country-specific IDs (national identity cards, insurance numbers) usually need a
 the [organization deny-list](/guide/organization-detection).
 :::
 
+## Detection engine
+
+`DETECTION_ENGINE` (chart `config.detectionEngine`, default `ner` in the chart,
+`presidio` for the bare service) picks how names are found:
+
+| Engine | Names (`PERSON`) | Pattern types (email, phone, IBAN, card, IP, …) | Languages |
+| --- | --- | --- | --- |
+| `ner` | NER service: one multilingual span model (GLiNER2-PII) | Presidio's pattern recognizers | Any — no language detection |
+| `presidio` | Presidio's spaCy NER, one model per language | Presidio | `PRESIDIO_LANGUAGE(S)` |
+
+With `ner`, every line of a text (a gateway that joins a conversation puts one
+message per line) is analyzed on its own, and a line longer than
+`NER_CHUNK_CHARS` (1000) characters is cut into windows overlapping by
+`NER_CHUNK_OVERLAP` (150). The model is trained on short inputs: given a whole
+conversation at once it stops finding names, and its memory grows with the
+square of the input length. Spans need a confidence of `NER_THRESHOLD` (0.9);
+`ENTITY_SCORE_THRESHOLD` overrides that per type.
+
+`NER_ENTITY_LABELS` maps entity types to the model's labels (default
+`PERSON:person|full_name|first_name|last_name,ORGANIZATION:organization`). A
+type is taken from the NER service only when it is also in `PRESIDIO_ENTITIES`;
+every other enabled type goes to Presidio, always analyzed in
+`PRESIDIO_LANGUAGE`. `ORGANIZATION` through the zero-shot `organization` label
+is experimental.
+
+On a hand-labelled en/de/fr/it/hu test set, the model behind the `ner` engine
+reached an F1 of 0.87 for person names, against 0.76 for the `presidio` engine
+with per-language spaCy models (on Hungarian, which the multilingual analyzer
+has no model for, 0.87 against 0.52). Extended to 15 European languages (plus
+es pt nl pl cs sv da ro fi el) it stayed at 0.88.
+
+Known gaps: product names in English chat (add them to the
+[allow-list](#allow-list)), nouns that are also surnames (`Kowal`, `Pekař`),
+and heavily inflected names where only part clears the threshold
+(`Kovács Péternek` → only `Kovács`).
+
 ## Languages
+
+This section applies to `DETECTION_ENGINE=presidio`; the `ner` engine needs no
+language setting.
 
 Presidio's name detection is per language: German text analyzed as English
 misses most German names and tags ordinary words ("Bitte") as organizations. List
@@ -102,19 +141,36 @@ lowers `PHONE_NUMBER` only: under 0.7 no phone number would ever be masked.
 
 ## Allow-list
 
-Terms that should **never** be pseudonymized, even when Presidio detects them:
+Terms that should **never** be pseudonymized, even when they are detected:
 
 ```bash
-PALENA_PSEUDONYMIZER_ALLOW_LIST=Palena,Acme Rockets,Ada Lovelace
+PALENA_PSEUDONYMIZER_ALLOW_LIST=Palena,Acme Rockets,Ada Lovelace,Alexa,Siri
 ```
 
-Matched case-insensitively against the detected span. Use it for:
+Matched case-insensitively against the detected span, also with a short
+inflection ending (up to five letters, optionally after `-` or `'`): `Linux`
+covers `Linuxra`, `Linuxon`, `Linux's`. A span that contains the term among
+other words (`Siri Johnson`) is still pseudonymized — it may be a person.
+
+A built-in list of product, platform and tool names (ChatGPT, Bitwarden,
+KeePassXC, 1Password, Proton Pass, Linux, Docker, Kubernetes, Heroku, GitHub,
+Excel, …) is added unless `ALLOW_LIST_BUILTIN=false`. It leaves out names that
+are also people's names — `Alexa`, `Siri`, `Claude`, `Jenkins`, `Kafka`,
+`Render` — because allow-listing those would leak a person with that name; add
+them yourself when your traffic is about the products.
+
+Use the allow-list for:
 
 - **your own brand / product names** — you don't want "Palena" swapped for a
   fake org in every prompt;
 - **public figures or well-known entities** that carry no client PII;
 - **words Presidio over-tags** — e.g. the generic NER tagging "SSN" as an
   `ORGANIZATION` (a false positive you saw in testing).
+
+Separately from the allow-list, a `PERSON` span is ignored when it cannot be
+a name: no letters, more than five words, four or more words all in lower case
+(`hi which passwd mgr`), or a single lower-case word of three letters or fewer
+(`mgr`, `brb`).
 
 It's the symmetric counterpart to the deny-lists below: a deny-list *adds*
 detections, the allow-list *suppresses* them. Allow-listed terms are also excluded from

@@ -1,0 +1,89 @@
+{{- if and (eq .Values.config.detectionEngine "ner") .Values.ner.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pseudonymizer.ner.fullname" . }}
+  labels:
+    {{- include "pseudonymizer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ner
+spec:
+  replicas: {{ .Values.ner.replicas }}
+  selector:
+    matchLabels:
+      {{- include "pseudonymizer.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ner
+  template:
+    metadata:
+      labels:
+        {{- include "pseudonymizer.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ner
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: ner
+          image: "{{ .Values.ner.image.repository }}:{{ .Values.ner.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.ner.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: NER_TORCH_THREADS
+              value: {{ .Values.ner.torchThreads | quote }}
+            - name: NER_BATCH_SIZE
+              value: {{ .Values.ner.modelBatchSize | quote }}
+            # The pseudonymizer windows lines to config.ner chunkChars, so
+            # longer texts only come from a misconfigured client.
+            - name: NER_MAX_TEXT_CHARS
+              value: {{ max 4000 (int .Values.ner.chunkChars) | quote }}
+          # Loading the model takes ~10-30 s; /health answers 503 until then.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.ner.resources | nindent 12 }}
+          volumeMounts:
+            # readOnlyRootFilesystem: torch / transformers write small caches.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pseudonymizer.ner.fullname" . }}
+  labels:
+    {{- include "pseudonymizer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ner
+spec:
+  ports:
+    - port: 3000
+      targetPort: http
+      name: http
+  selector:
+    {{- include "pseudonymizer.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ner
+{{- end }}

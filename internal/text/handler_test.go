@@ -373,3 +373,59 @@ func TestPseudonymize_PerEntityThreshold(t *testing.T) {
 	require.Contains(t, res.Text, "Bob")
 	require.NotContains(t, res.Text, "079 123 45 67")
 }
+
+func TestPseudonymize_StoredMappingAppliedWithoutNewDetection(t *testing.T) {
+	// Turn 1 maps the name; in turn 2 the detector misses it. The stored
+	// mapping must still hide it — before, the text went out unchanged.
+	stub := &stubAnalyzer{detections: []presidio.Detection{{EntityType: "PERSON", Text: "Alice Johnson", Score: 0.9}}}
+	h, _ := newDecomposingHandler(t, stub)
+	_, err := h.Pseudonymize(context.Background(), "Book Alice Johnson.", "s1")
+	require.NoError(t, err)
+
+	stub.detections = nil
+	res, err := h.Pseudonymize(context.Background(), "did alice johnson confirm?", "s1")
+	require.NoError(t, err)
+	require.Equal(t, "did jordan avery confirm?", res.Text)
+	require.Equal(t, 0, res.EntitiesDetected)
+}
+
+func TestPseudonymize_ImplausiblePersonIgnored(t *testing.T) {
+	// Production incident: the German spaCy model tagged this as PERSON and
+	// it was rewritten to "taylor morgan", components included.
+	stub := &stubAnalyzer{detections: []presidio.Detection{{EntityType: "PERSON", Text: "hi   which  passwd mgr", Score: 0.85}}}
+	h, store := newDecomposingHandler(t, stub)
+	res, err := h.Pseudonymize(context.Background(), "hi   which  passwd mgr", "s1")
+	require.NoError(t, err)
+	require.Equal(t, "hi   which  passwd mgr", res.Text)
+	m, err := store.GetMapping(context.Background(), "s1")
+	require.NoError(t, err)
+	require.Empty(t, m)
+}
+
+func TestPseudonymize_LowercaseNameKeepsNoWordMappings(t *testing.T) {
+	stub := &stubAnalyzer{detections: []presidio.Detection{{EntityType: "PERSON", Text: "thomas huber", Score: 0.95}}}
+	h, store := newDecomposingHandler(t, stub)
+	res, err := h.Pseudonymize(context.Background(), "frag mal den thomas huber", "s1")
+	require.NoError(t, err)
+	require.Equal(t, "frag mal den jordan avery", res.Text)
+	m, err := store.GetMapping(context.Background(), "s1")
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"thomas huber": "Jordan Avery"}, m, "no bare-word keys from a lower-case span")
+}
+
+func TestPseudonymize_AllowListedInflectionNotPseudonymized(t *testing.T) {
+	stub := &stubAnalyzer{detections: []presidio.Detection{{EntityType: "PERSON", Text: "Linuxra", Score: 0.95}}}
+	mr := miniredis.RunT(t)
+	store := mapping.NewRedisStoreFromClient(redis.NewClient(&redis.Options{Addr: mr.Addr()}),
+		mapping.Config{SessionTTL: time.Minute, Timeout: time.Second}, nil)
+	h := NewHandler(HandlerConfig{
+		Analyzer:  stub,
+		Store:     store,
+		Pools:     NewPools(map[string][]string{"PERSON": {"Jordan Avery"}}),
+		Entities:  []string{"PERSON"},
+		AllowList: map[string]struct{}{"linux": {}},
+	})
+	res, err := h.Pseudonymize(context.Background(), "melyik jelszókezelő jó Linuxra?", "s1")
+	require.NoError(t, err)
+	require.Equal(t, "melyik jelszókezelő jó Linuxra?", res.Text)
+}
