@@ -27,6 +27,21 @@ func TestDenyMatcher_WholeWordsCaseInsensitive(t *testing.T) {
 	}, got, "longest term wins; no match inside a longer word")
 }
 
+func TestDenyMatcher_ShorterTermWhenLongerFailsBoundary(t *testing.T) {
+	m := NewDenyMatcher([]DenyList{
+		{Entity: "ORGANIZATION", Terms: []string{"Contoso", "Contoso Ltd"}},
+	}, []string{"ORGANIZATION"})
+
+	// "Contoso Ltd" is not a whole word in "Contoso Ltda"; "Contoso" is, and
+	// must still be found rather than leaking the deny-listed name.
+	text := "Contoso Ltda signed; Contoso Ltd too."
+	var got []string
+	for _, d := range m.Find(text) {
+		got = append(got, d.Text)
+	}
+	require.ElementsMatch(t, []string{"Contoso", "Contoso Ltd"}, got)
+}
+
 func TestDenyMatcher_OnlyEnabledTypes(t *testing.T) {
 	lists := []DenyList{{Entity: "ORGANIZATION", Terms: []string{"Contoso"}}, {Entity: "PERSON", Terms: []string{" "}}}
 	require.Nil(t, NewDenyMatcher(lists, []string{"PERSON"}), "ORGANIZATION not enabled, PERSON list empty")
