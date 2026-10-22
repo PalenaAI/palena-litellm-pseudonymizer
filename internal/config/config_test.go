@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/text"
 )
 
 func TestLoad_Defaults(t *testing.T) {
@@ -137,4 +139,15 @@ func TestAllowListSet_MergesBuiltin(t *testing.T) {
 	cfg, err = Load()
 	require.NoError(t, err)
 	require.Equal(t, map[string]struct{}{"navique": {}, "alexa": {}}, cfg.AllowListSet())
+}
+
+func TestLoad_DenyLists(t *testing.T) {
+	t.Setenv("PALENA_PSEUDONYMIZER_DENY_LISTS", `[{"entity":"PERSON","terms":["Project Falcon","Acme, Inc."]}]`)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, []text.DenyList{{Entity: "PERSON", Terms: []string{"Project Falcon", "Acme, Inc."}}}, cfg.DenyListEntries())
+
+	t.Setenv("PALENA_PSEUDONYMIZER_DENY_LISTS", `PERSON:Falcon`)
+	_, err = Load()
+	require.ErrorContains(t, err, "DENY_LISTS")
 }

@@ -6,6 +6,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -103,6 +104,12 @@ type Config struct {
 	// AllowListBuiltin adds text.BuiltinAllowList (common product, platform
 	// and tool names that are not also people's names) to ALLOW_LIST.
 	AllowListBuiltin bool `envconfig:"ALLOW_LIST_BUILTIN" default:"true"`
+	// DenyLists are terms always pseudonymized as an entity type, as JSON:
+	// [{"entity":"PERSON","terms":["Project Falcon"]}]. Only the types the
+	// NER engine serves are matched by the service; every other type is
+	// matched by Presidio's deny-list recognizers (the chart renders both
+	// from presidio.analyzer.denyLists).
+	DenyLists string `envconfig:"DENY_LISTS"`
 
 	// DeterministicSecret, when set, switches POOL assignment from a
 	// per-session counter to a keyed HMAC of the real value: the same real
@@ -254,6 +261,19 @@ func (c *Config) AllowListSet() map[string]struct{} {
 	return out
 }
 
+// DenyListEntries parses DENY_LISTS. Invalid JSON is surfaced by Validate;
+// here it yields no lists.
+func (c *Config) DenyListEntries() []text.DenyList {
+	var out []text.DenyList
+	if strings.TrimSpace(c.DenyLists) == "" {
+		return nil
+	}
+	if err := json.Unmarshal([]byte(c.DenyLists), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
 // NERLabels parses NER_ENTITY_LABELS into model label → entity type.
 // Invalid entries are surfaced by Validate, not here.
 func (c *Config) NERLabels() map[string]string {
@@ -276,6 +296,17 @@ func (c *Config) NERLabels() map[string]string {
 func (c *Config) Validate() error {
 	if _, err := url.Parse(c.AnalyzerURL); err != nil {
 		return fmt.Errorf("invalid PRESIDIO_ANALYZER_URL: %w", err)
+	}
+	if strings.TrimSpace(c.DenyLists) != "" {
+		var lists []text.DenyList
+		if err := json.Unmarshal([]byte(c.DenyLists), &lists); err != nil {
+			return fmt.Errorf("invalid DENY_LISTS: must be a JSON list of {entity, terms}: %w", err)
+		}
+		for _, l := range lists {
+			if strings.TrimSpace(l.Entity) == "" {
+				return errors.New("DENY_LISTS entry without an entity")
+			}
+		}
 	}
 	switch c.DetectionEngine {
 	case "presidio":

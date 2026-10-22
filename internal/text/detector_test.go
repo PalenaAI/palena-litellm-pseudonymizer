@@ -104,3 +104,17 @@ type badSpanNER struct{}
 func (badSpanNER) Detect(_ context.Context, texts, _ []string, _ float64) ([][]ner.Span, error) {
 	return [][]ner.Span{{{Label: "person", Start: 0, End: 99, Score: 1}}}, nil
 }
+
+func TestNERDetector_DenyListsForModelTypes(t *testing.T) {
+	stub := &stubNER{names: map[string]string{}}
+	d := &NERDetector{
+		NER: stub, Labels: map[string]string{"person": "PERSON"}, Threshold: 0.9,
+		ChunkChars: 1000, ChunkOverlap: 150,
+		Deny: NewDenyMatcher([]DenyList{{Entity: "PERSON", Terms: []string{"Project Falcon"}}}, []string{"PERSON"}),
+	}
+	got, err := d.Detect(context.Background(), "Status of project falcon?")
+	require.NoError(t, err)
+	require.Len(t, got, 1, "a term the model misses is still found")
+	require.Equal(t, "PERSON", got[0].EntityType)
+	require.Equal(t, "project falcon", got[0].Text)
+}

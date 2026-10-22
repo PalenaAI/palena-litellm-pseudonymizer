@@ -22,6 +22,15 @@ data:
   PALENA_PSEUDONYMIZER_NER_CHUNK_OVERLAP: {{ .Values.ner.chunkOverlap | int | quote }}
   PALENA_PSEUDONYMIZER_NER_BATCH_SIZE: {{ .Values.ner.requestBatchSize | int | quote }}
   PALENA_PSEUDONYMIZER_NER_TIMEOUT_SECONDS: {{ printf "%vs" .Values.ner.timeoutSeconds | quote }}
+  {{- $denyLists := .Values.presidio.analyzer.denyLists -}}
+  {{- with .Values.presidio.analyzer.organizations }}
+  {{- $denyLists = append $denyLists (dict "entity" "ORGANIZATION" "terms" .) -}}
+  {{- end }}
+  {{- if $denyLists }}
+  # Deny-lists of the types the NER model serves never reach Presidio's
+  # recognizers; the service matches them itself (other types: Presidio).
+  PALENA_PSEUDONYMIZER_DENY_LISTS: {{ $denyLists | toJson | quote }}
+  {{- end }}
   {{- end }}
   # Presidio
   PALENA_PSEUDONYMIZER_PRESIDIO_ANALYZER_URL: {{ include "pseudonymizer.analyzerURL" . | quote }}

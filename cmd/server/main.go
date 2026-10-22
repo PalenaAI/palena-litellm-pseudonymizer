@@ -103,9 +103,13 @@ func run() error {
 		}
 		client := ner.New(ner.Config{BaseURL: cfg.NERURL, Timeout: cfg.NERTimeout, BatchSize: cfg.NERBatchSize})
 		nerPinger = client
+		// Deny-listed terms of the types the model serves are matched here:
+		// those types never reach Presidio's deny-list recognizers.
+		deny := text.NewDenyMatcher(cfg.DenyListEntries(), uniqueValues(labels))
 		detector = &text.NERDetector{
 			NER:             client,
 			Labels:          labels,
+			Deny:            deny,
 			Threshold:       nerMin,
 			ChunkChars:      cfg.NERChunkChars,
 			ChunkOverlap:    cfg.NERChunkOverlap,

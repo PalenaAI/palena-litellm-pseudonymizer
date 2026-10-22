@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Deny-listed names were never masked with the `ner` engine.** The types the
+  NER model serves (`PERSON`, and `ORGANIZATION` when enabled) are never sent to
+  Presidio, so the deny-list recognizers the chart renders there were never
+  asked: a client or project name on a `PERSON` deny-list reached the model in
+  clear. The service now matches those lists itself — exactly, case-insensitively,
+  as whole words, like Presidio's recognizer — from the new
+  `PALENA_PSEUDONYMIZER_DENY_LISTS` (JSON `[{"entity","terms"}]`), which the chart
+  renders from `presidio.analyzer.denyLists` and `presidio.analyzer.organizations`.
+  Deny-lists of the pattern types still go to Presidio.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added

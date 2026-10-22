@@ -194,7 +194,11 @@ presidio:
         terms: [Project Falcon]
 ```
 
-The entity type must also be in `config.entities`. The older
+The entity type must also be in `config.entities`. With the `ner` engine the
+types the NER model serves (`PERSON`, and `ORGANIZATION` when enabled) never
+reach Presidio, so the service matches their lists itself — the same way:
+exactly, case-insensitively, as whole words. The chart passes them as
+`PALENA_PSEUDONYMIZER_DENY_LISTS` (JSON); you set nothing extra. The older
 `presidio.analyzer.organizations` list still works and is the same as an
 `ORGANIZATION` entry.
 

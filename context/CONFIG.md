@@ -129,6 +129,7 @@ across a conversation and reverses exactly (case and all).
 | `PALENA_PSEUDONYMIZER_DECOMPOSE_PERSON_NAMES` | `true` | Register first/last-name sub-mappings for multi-token PERSON names — see note below. |
 | `PALENA_PSEUDONYMIZER_ALLOW_LIST` | *(empty)* | Comma-separated terms never pseudonymized even when detected (brand/product names, public figures, words a detector over-tags). Case-insensitive, also with an inflection ending of up to five letters (`text.AllowListed`); a span with the term among other words is not matched. Also excluded from name decomposition. Symmetric to the org deny-list. |
 | `PALENA_PSEUDONYMIZER_ALLOW_LIST_BUILTIN` | `true` | Merge `text.BuiltinAllowList` (product/tool names that are not people's names). |
+| `PALENA_PSEUDONYMIZER_DENY_LISTS` | *(empty)* | JSON `[{"entity","terms"}]`. `text.DenyMatcher` (whole word, case-insensitive, score 1.0) runs inside `NERDetector` for the types the model serves — they never reach Presidio's deny-list recognizers. Other types stay with Presidio. Invalid JSON fails startup. |
 | `PALENA_PSEUDONYMIZER_DETERMINISTIC_SECRET` | *(empty)* | When set, POOL assignment uses `HMAC-SHA256(secret, name)` over the pool so the same real value maps to the same pseudonym across sessions (stable/portable pseudonyms; probes forward on within-session collision). Reversal still uses the store. Token entities unaffected. Secret-grade. |
 
 **Collision hardening.** A freshly-minted pseudonym is never allowed to be a

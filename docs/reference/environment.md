@@ -60,6 +60,7 @@ startup and exits on invalid values.
 | `DECOMPOSE_PERSON_NAMES` | `true` | Register first/last-name sub-mappings. |
 | `ALLOW_LIST` | *(empty)* | Comma-separated terms **never pseudonymized** even when detected — brand/product names, public figures, words a detector over-tags. Case-insensitive, also with a short inflection ending (`Linuxra`). See [Configuration → Allow-list](/guide/configuration#allow-list). |
 | `ALLOW_LIST_BUILTIN` | `true` | Add the built-in list of product, platform and tool names that are not also people's names. |
+| `DENY_LISTS` | *(empty)* | JSON `[{"entity":"PERSON","terms":["Project Falcon"]}]`: terms **always pseudonymized** as that type. Matched by the service for the types the `ner` engine's model serves; Presidio's recognizers match the rest. The chart renders it from `presidio.analyzer.denyLists`. |
 | `DETERMINISTIC_SECRET` | *(empty)* | When set, pool assignment uses a keyed HMAC of the real value so the same name maps to the same pseudonym **across sessions**. Token entities unaffected. Treat as a secret. See [Configuration → Deterministic pseudonyms](/guide/configuration#deterministic-pseudonyms). |
 | `POOL_PERSON` | *(unisex names)* | Comma-separated person pseudonyms. |
 | `POOL_ORGANIZATION` | *(neutral orgs)* | Comma-separated org pseudonyms. |

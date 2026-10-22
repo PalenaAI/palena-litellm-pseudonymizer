@@ -54,6 +54,11 @@ type NERDetector struct {
 	ChunkChars   int
 	ChunkOverlap int
 
+	// Deny finds the always-pseudonymized terms of the types the span model
+	// serves: those types never reach Presidio, so its deny-list recognizers
+	// would never be asked. Nil when there are none.
+	Deny *DenyMatcher
+
 	// Presidio handles PatternEntities, always in PatternLanguage.
 	Analyzer        Analyzer
 	PatternEntities []string
@@ -93,6 +98,7 @@ func (d *NERDetector) Detect(ctx context.Context, text string) ([]presidio.Detec
 		}
 		out = spans
 	}
+	out = append(out, d.Deny.Find(text)...)
 	if len(d.PatternEntities) > 0 {
 		pat, err := d.Analyzer.Analyze(ctx, text, d.PatternEntities, d.PatternLanguage)
 		if err != nil {
