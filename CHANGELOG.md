@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **NER cache.** With the `ner` engine each pod remembers what the model found
+  in a line, so a conversation sent again every turn (Wäg's `pre_call` carries
+  the whole history, and a second pass message by message) only costs model
+  time for its new lines; identical lines in one request are sent once. Keys
+  are SHA-256 digests of the line (no text is kept), about 200 bytes per entry.
+  `NER_CACHE_ENTRIES` (500000, ~100 MiB) caps it — the least recently used
+  entry makes room — and `NER_CACHE_TTL` (1h) expires an entry after it was
+  stored; `0` turns the cache off. Failures are never cached. Metrics
+  `palena_pseudonymizer_ner_cache_lookups_total{result}`,
+  `…_ner_cache_evictions_total`, `…_ner_cache_entries`. Chart `ner.cache.*`;
+  the service's memory limit is now 768Mi (was 512Mi).
+
+### Fixed
+
+- **A gateway timeout was logged as the NER service being unreachable.** When
+  the caller gave up while a call to the NER service or Presidio was in flight
+  (Wäg's guardrail timeout, 2.5 s by default), the service logged
+  `ner_unreachable` / `presidio_unreachable` though the dependency was healthy.
+  It now logs a `caller_canceled` warning (and answers 499 to a caller that is
+  gone); its own timeout says `… timed out after <timeout>`, and other send
+  failures keep the transport error.
+
 ## [0.6.1] - 2026-10-22
 
 ### Fixed

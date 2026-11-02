@@ -42,6 +42,7 @@ non-zero 500 rate. Depedency failures show as 502.
 | --- | --- | --- | --- | --- |
 | Presidio Analyzer 5xx / timeout / connect refused | Cannot detect text PII | 502 | `{"error": "presidio_unreachable"}` | LLM call blocked |
 | NER service 5xx / 413 / timeout / connect refused (`ner` engine) | Cannot detect names | 502 | `{"error": "ner_unreachable"}` | LLM call blocked |
+| Caller gave up while a NER / Presidio call was in flight (gateway guardrail timeout, disconnect) | Nobody waits for the answer | 499 | `{"error": "caller_canceled"}` | WARN `caller_canceled` — the caller's own timeout decides (Wäg `fail_closed` blocks) |
 | NER service returns malformed JSON or offsets outside the text | Detection broken | 502 | `{"error": "ner_unreachable"}` | LLM call blocked |
 | Presidio Image Redactor unreachable | Cannot detect image PII | 502 | `{"error": "image_redactor_unreachable"}` | LLM call blocked |
 | Redis unreachable | Cannot persist mapping | 502 | `{"error": "mapping_store_unreachable"}` | LLM call blocked |

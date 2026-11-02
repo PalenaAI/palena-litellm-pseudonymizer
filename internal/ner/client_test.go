@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -76,4 +77,37 @@ func TestPing_NotReadyUntilModelLoaded(t *testing.T) {
 	require.ErrorIs(t, c.Ping(context.Background()), errs.ErrNERUnavailable)
 	ready = true
 	require.NoError(t, c.Ping(context.Background()))
+}
+
+// A call the caller abandoned is not an outage: in production the gateway's
+// 2.5 s guardrail timeout cancelled calls queued behind a slow batch, and the
+// log said "ner_unreachable" while the service was healthy.
+func TestDetect_CallerCancelIsNotUnreachable(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		_, _ = w.Write([]byte(`{"results":[[]]}`))
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := New(Config{BaseURL: srv.URL, Timeout: 10 * time.Second}).Detect(ctx, []string{"a"}, []string{"person"}, 0.9)
+	require.ErrorIs(t, err, errs.ErrCallerCanceled)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.NotErrorIs(t, err, errs.ErrNERUnavailable)
+}
+
+func TestDetect_OwnTimeoutSaysSo(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	_, err := New(Config{BaseURL: srv.URL, Timeout: 50 * time.Millisecond}).Detect(context.Background(), []string{"a"}, []string{"person"}, 0.9)
+	require.ErrorIs(t, err, errs.ErrNERUnavailable)
+	require.Contains(t, err.Error(), "timed out after 50ms")
 }

@@ -7,8 +7,11 @@
 package errs
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
+	"time"
 )
 
 var (
@@ -32,6 +35,13 @@ var (
 	// ErrMappingStoreUnavailable is returned when Redis is unreachable
 	// or a Redis command fails. HTTP maps to 502 on pre-call.
 	ErrMappingStoreUnavailable = errors.New("mapping_store_unreachable")
+
+	// ErrCallerCanceled is returned when the request that needed a
+	// dependency was abandoned by its caller (the gateway's guardrail
+	// timeout, a client disconnect) while the dependency call was in
+	// flight. The dependency itself may be healthy. Logged as a warning;
+	// the response goes nowhere.
+	ErrCallerCanceled = errors.New("caller_canceled")
 
 	// ErrSessionDerivationFailed is returned when we cannot derive
 	// any session id from the request (bad wiring). HTTP 400.
@@ -74,4 +84,20 @@ func Wrap(err error, format string, a ...any) error {
 		return nil
 	}
 	return fmt.Errorf(format+": %w", append(a, err)...)
+}
+
+// SendFailure classifies an error from sending a request to a dependency
+// (`what`, e.g. "ner detect"): the caller gave up (ErrCallerCanceled), the
+// client timed out after `timeout`, or the dependency could not be reached
+// (the transport error is kept for the log). Not-caller failures wrap
+// `unavailable`.
+func SendFailure(ctx context.Context, err error, unavailable error, what string, timeout time.Duration) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fmt.Errorf("%s: %w (%w)", what, ErrCallerCanceled, ctxErr)
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return Wrap(unavailable, "%s timed out after %s", what, timeout)
+	}
+	return Wrap(unavailable, "%s failed: %v", what, err)
 }

@@ -125,6 +125,24 @@ func TestHandler_PresidioUnavailable_502(t *testing.T) {
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 }
 
+// When the caller gave up mid-call the dependency is not reported as down.
+func TestHandler_CallerCanceled_499(t *testing.T) {
+	srv, _ := newTestServer(t, &stubAnalyzer{err: errs.SendFailure(canceledCtx(), errors.New("x"), errs.ErrPresidioUnavailable, "presidio analyze", time.Second)})
+	rec := post(t, srv, "/beta/litellm_basic_guardrail_api", GuardrailRequest{
+		InputType:     "request",
+		LiteLLMCallID: "call-1",
+		Texts:         []string{"hi"},
+	})
+	require.Equal(t, 499, rec.Code)
+	require.Contains(t, rec.Body.String(), "caller_canceled")
+}
+
+func canceledCtx() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}
+
 func TestHandler_DocumentsBlocked(t *testing.T) {
 	srv, _ := newTestServer(t, &stubAnalyzer{})
 	rec := post(t, srv, "/beta/litellm_basic_guardrail_api", GuardrailRequest{

@@ -90,6 +90,7 @@ func run() error {
 	thresholds := cfg.EntityThresholds()
 	var detector text.Detector
 	var nerPinger httpapi.Pinger
+	var nerCache *text.NERCache
 	if cfg.DetectionEngine == "ner" {
 		labels, patternEntities := text.NERLabelsFor(cfg.NERLabels(), cfg.Entities)
 		// NER types are judged by NER_THRESHOLD unless ENTITY_SCORE_THRESHOLD
@@ -106,8 +107,10 @@ func run() error {
 		// Deny-listed terms of the types the model serves are matched here:
 		// those types never reach Presidio's deny-list recognizers.
 		deny := text.NewDenyMatcher(cfg.DenyListEntries(), uniqueValues(labels))
+		nerCache = text.NewNERCache(cfg.NERCacheEntries, cfg.NERCacheTTL)
 		detector = &text.NERDetector{
 			NER:             client,
+			Cache:           nerCache,
 			Labels:          labels,
 			Deny:            deny,
 			Threshold:       nerMin,
@@ -118,7 +121,8 @@ func run() error {
 			PatternLanguage: cfg.Language,
 		}
 		logger.Info("detection engine: ner", "ner_url", cfg.NERURL, "ner_entities", uniqueValues(labels),
-			"pattern_entities", patternEntities, "pattern_language", cfg.Language)
+			"pattern_entities", patternEntities, "pattern_language", cfg.Language,
+			"ner_cache_entries", cfg.NERCacheEntries, "ner_cache_ttl", cfg.NERCacheTTL.String())
 	}
 
 	// Text handler
@@ -176,6 +180,9 @@ func run() error {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(collectors.NewGoCollector())
 	registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	if nerCache != nil {
+		registerNERCacheMetrics(registry, nerCache)
+	}
 
 	router := httpapi.NewRouter(httpapi.RouterConfig{
 		Handler:             guardrail,
@@ -253,6 +260,39 @@ func newLogger(level, format string) *slog.Logger {
 		return slog.New(slog.NewTextHandler(os.Stdout, opts))
 	}
 	return slog.New(slog.NewJSONHandler(os.Stdout, opts))
+}
+
+// registerNERCacheMetrics exposes the NER cache counters on /metrics.
+func registerNERCacheMetrics(reg *prometheus.Registry, c *text.NERCache) {
+	lookups := func(hit bool) func() float64 {
+		return func() float64 {
+			s := c.Stats()
+			if hit {
+				return float64(s.Hits)
+			}
+			return float64(s.Misses)
+		}
+	}
+	reg.MustRegister(
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Name:        "palena_pseudonymizer_ner_cache_lookups_total",
+			Help:        "Lines looked up in the NER cache, by result.",
+			ConstLabels: prometheus.Labels{"result": "hit"},
+		}, lookups(true)),
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Name:        "palena_pseudonymizer_ner_cache_lookups_total",
+			Help:        "Lines looked up in the NER cache, by result.",
+			ConstLabels: prometheus.Labels{"result": "miss"},
+		}, lookups(false)),
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Name: "palena_pseudonymizer_ner_cache_evictions_total",
+			Help: "NER cache entries dropped to make room (the cache was full).",
+		}, func() float64 { return float64(c.Stats().Evictions) }),
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "palena_pseudonymizer_ner_cache_entries",
+			Help: "Entries in the NER cache (expired ones included until they are dropped).",
+		}, func() float64 { return float64(c.Stats().Entries) }),
+	)
 }
 
 // uniqueValues returns the sorted distinct values of m.

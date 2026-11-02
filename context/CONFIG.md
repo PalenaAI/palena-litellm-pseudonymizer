@@ -32,6 +32,8 @@ config — never boot into a half-configured state.
 | `PALENA_PSEUDONYMIZER_NER_CHUNK_CHARS` | `1000` | ≥ 100. |
 | `PALENA_PSEUDONYMIZER_NER_CHUNK_OVERLAP` | `150` | `0 ≤ overlap < chunk / 2`. |
 | `PALENA_PSEUDONYMIZER_NER_BATCH_SIZE` | `16` | ≥ 1. |
+| `PALENA_PSEUDONYMIZER_NER_CACHE_ENTRIES` | `500000` | ≥ 0; `0` = no cache. `text.NERCache`: LRU + TTL, SHA-256 keys over labels, threshold and the line, spans only (no text). |
+| `PALENA_PSEUDONYMIZER_NER_CACHE_TTL` | `1h` | ≥ 0; counted from when the entry was stored, reads do not extend it. |
 
 > **Why `ner` splits per line.** `text.NERDetector` sends every line on its own
 > (`splitUnits`), windowing lines over `NER_CHUNK_CHARS`. The model

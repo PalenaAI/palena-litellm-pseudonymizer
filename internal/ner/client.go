@@ -41,6 +41,7 @@ type Config struct {
 type Client struct {
 	baseURL   string
 	batchSize int
+	timeout   time.Duration
 	http      *http.Client
 }
 
@@ -55,6 +56,7 @@ func New(cfg Config) *Client {
 	return &Client{
 		baseURL:   strings.TrimRight(cfg.BaseURL, "/"),
 		batchSize: cfg.BatchSize,
+		timeout:   cfg.Timeout,
 		http:      &http.Client{Timeout: cfg.Timeout},
 	}
 }
@@ -73,6 +75,7 @@ type detectResponse struct {
 // least threshold. The result is parallel to texts.
 //
 // Errors:
+//   - errs.ErrCallerCanceled — the caller gave up while the call was in flight
 //   - errs.ErrNERUnavailable — connect / timeout / non-2xx
 //   - errs.ErrNERMalformed   — undecodable body or a result count/offset that
 //     does not match the request
@@ -102,7 +105,7 @@ func (c *Client) detectBatch(ctx context.Context, texts, labels []string, thresh
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, errs.Wrap(errs.ErrNERUnavailable, "detect request")
+		return nil, errs.SendFailure(ctx, err, errs.ErrNERUnavailable, "ner detect", c.timeout)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -131,7 +134,7 @@ func (c *Client) Ping(ctx context.Context) error {
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return errs.Wrap(errs.ErrNERUnavailable, "ner health")
+		return errs.SendFailure(ctx, err, errs.ErrNERUnavailable, "ner health", c.timeout)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {

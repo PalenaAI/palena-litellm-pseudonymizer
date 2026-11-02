@@ -22,9 +22,11 @@ type stubNER struct {
 	labels []string
 	thr    float64
 	err    error
+	calls  int
 }
 
 func (s *stubNER) Detect(_ context.Context, texts, labels []string, threshold float64) ([][]ner.Span, error) {
+	s.calls++
 	s.texts, s.labels, s.thr = texts, labels, threshold
 	if s.err != nil {
 		return nil, s.err

@@ -99,7 +99,7 @@ func (a *Analyzer) Analyze(ctx context.Context, text string, entities []string, 
 
 	resp, err := a.http.Do(req)
 	if err != nil {
-		return nil, errs.Wrap(errs.ErrPresidioUnavailable, "analyze request")
+		return nil, errs.SendFailure(ctx, err, errs.ErrPresidioUnavailable, "presidio analyze", a.timeout)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

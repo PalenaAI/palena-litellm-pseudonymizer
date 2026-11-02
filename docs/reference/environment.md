@@ -26,6 +26,8 @@ startup and exits on invalid values.
 | `NER_CHUNK_CHARS` | `1000` | Each line is analyzed on its own; longer lines are cut into windows of this many characters. |
 | `NER_CHUNK_OVERLAP` | `150` | Characters consecutive windows share. Below `NER_CHUNK_CHARS / 2`. |
 | `NER_BATCH_SIZE` | `16` | Texts per HTTP call to the NER service. |
+| `NER_CACHE_ENTRIES` | `500000` | Per-pod cache of what the model found in a line (SHA-256 keys, ~200 bytes per entry, ~100 MiB full). At the cap the least recently used entry makes room. `0` = off. |
+| `NER_CACHE_TTL` | `1h` | How long a cached line is used after it was stored. `0` = off. |
 
 ## Presidio
 

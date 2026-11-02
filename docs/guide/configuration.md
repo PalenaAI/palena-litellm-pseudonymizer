@@ -97,6 +97,17 @@ with per-language spaCy models (on Hungarian, which the multilingual analyzer
 has no model for, 0.87 against 0.52). Extended to 15 European languages (plus
 es pt nl pl cs sv da ro fi el) it stayed at 0.88.
 
+Each pod keeps a cache of what the model found in a line (`NER_CACHE_ENTRIES`,
+default 500000 — about 100 MiB full; `NER_CACHE_TTL`, default 1h): a gateway
+that sends the whole conversation every turn then only costs model time for the
+new lines. Only SHA-256 digests of the lines are kept, never the text.
+
+The model runs on CPU and answers one batch at a time, so the first look at a
+long conversation can take a few seconds. Give the gateway's guardrail call
+enough time (in Wäg: the guardrail item's `timeout_ms`, default 2500 — 10000 or
+more is safer); a caller that gives up mid-call is logged as `caller_canceled`,
+not as the NER service being down.
+
 Known gaps: product names in English chat (add them to the
 [allow-list](#allow-list)), nouns that are also surnames (`Kowal`, `Pekař`),
 and heavily inflected names where only part clears the threshold

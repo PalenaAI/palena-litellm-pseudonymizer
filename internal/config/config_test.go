@@ -5,6 +5,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -150,4 +151,20 @@ func TestLoad_DenyLists(t *testing.T) {
 	t.Setenv("PALENA_PSEUDONYMIZER_DENY_LISTS", `PERSON:Falcon`)
 	_, err = Load()
 	require.ErrorContains(t, err, "DENY_LISTS")
+}
+
+func TestLoad_NERCache(t *testing.T) {
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 500_000, cfg.NERCacheEntries)
+	require.Equal(t, time.Hour, cfg.NERCacheTTL)
+
+	t.Setenv("PALENA_PSEUDONYMIZER_DETECTION_ENGINE", "ner")
+	t.Setenv("PALENA_PSEUDONYMIZER_NER_CACHE_ENTRIES", "0")
+	_, err = Load()
+	require.NoError(t, err, "0 turns the cache off")
+
+	t.Setenv("PALENA_PSEUDONYMIZER_NER_CACHE_ENTRIES", "-1")
+	_, err = Load()
+	require.Error(t, err)
 }

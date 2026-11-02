@@ -5,7 +5,10 @@ package text
 
 import (
 	"context"
+	"crypto/sha256"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/language"
@@ -54,6 +57,10 @@ type NERDetector struct {
 	ChunkChars   int
 	ChunkOverlap int
 
+	// Cache, when set, answers lines the model has already seen (see
+	// NERCache); only the others are sent.
+	Cache *NERCache
+
 	// Deny finds the always-pseudonymized terms of the types the span model
 	// serves: those types never reach Presidio, so its deny-list recognizers
 	// would never be asked. Nil when there are none.
@@ -63,6 +70,86 @@ type NERDetector struct {
 	Analyzer        Analyzer
 	PatternEntities []string
 	PatternLanguage string
+}
+
+// spansFor returns the model's spans for every text, parallel to texts:
+// cached lines from the cache, the rest in one call (each distinct text
+// once), which then fill the cache.
+func (d *NERDetector) spansFor(ctx context.Context, texts, labels []string) ([][]ner.Span, error) {
+	out := make([][]ner.Span, len(texts))
+	var keys [][sha256.Size]byte
+	if d.Cache != nil {
+		scope := strings.Join(labels, "|") + "|" + strconv.FormatFloat(d.Threshold, 'g', -1, 64)
+		keys = make([][sha256.Size]byte, len(texts))
+		for i, t := range texts {
+			keys[i] = nerCacheKey(scope, t)
+		}
+	}
+	var ask []string
+	askOf := map[string]int{} // text → index in ask
+	pending := make([]int, len(texts))
+	for i, t := range texts {
+		pending[i] = -1
+		if d.Cache != nil {
+			if spans, ok := d.Cache.get(keys[i]); ok {
+				out[i] = fromCached(spans)
+				continue
+			}
+		}
+		j, seen := askOf[t]
+		if !seen {
+			j = len(ask)
+			askOf[t] = j
+			ask = append(ask, t)
+		}
+		pending[i] = j
+	}
+	if len(ask) == 0 {
+		return out, nil
+	}
+	results, err := d.NER.Detect(ctx, ask, labels, d.Threshold)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) != len(ask) {
+		return nil, errs.Wrap(errs.ErrNERMalformed, "%d results for %d texts", len(results), len(ask))
+	}
+	for i, j := range pending {
+		if j < 0 {
+			continue
+		}
+		out[i] = results[j]
+		if d.Cache != nil {
+			d.Cache.put(keys[i], toCached(results[j], labels))
+		}
+	}
+	return out, nil
+}
+
+func fromCached(spans []cachedSpan) []ner.Span {
+	if len(spans) == 0 {
+		return nil
+	}
+	out := make([]ner.Span, len(spans))
+	for i, s := range spans {
+		out[i] = ner.Span{Label: s.label, Start: int(s.start), End: int(s.end), Score: s.score}
+	}
+	return out
+}
+
+// toCached keeps the spans of labels that were asked for, pointing at the
+// detector's label strings so a cached entry holds no copy of them.
+func toCached(spans []ner.Span, labels []string) []cachedSpan {
+	var out []cachedSpan
+	for _, s := range spans {
+		for _, l := range labels {
+			if s.Label == l {
+				out = append(out, cachedSpan{start: int32(s.Start), end: int32(s.End), score: s.Score, label: l})
+				break
+			}
+		}
+	}
+	return out
 }
 
 // NERLabelsFor returns the model labels whose entity type is in entities,
@@ -124,12 +211,9 @@ func (d *NERDetector) detectNames(ctx context.Context, text string) ([]presidio.
 	}
 	sort.Strings(labels)
 
-	results, err := d.NER.Detect(ctx, texts, labels, d.Threshold)
+	results, err := d.spansFor(ctx, texts, labels)
 	if err != nil {
 		return nil, err
-	}
-	if len(results) != len(units) {
-		return nil, errs.Wrap(errs.ErrNERMalformed, "%d results for %d texts", len(results), len(units))
 	}
 
 	// Overlapping windows report the same name twice: keep one per

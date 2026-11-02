@@ -58,6 +58,13 @@ type Config struct {
 	NERChunkOverlap int `envconfig:"NER_CHUNK_OVERLAP" default:"150"`
 	// NERBatchSize caps the texts sent to the NER service per HTTP call.
 	NERBatchSize int `envconfig:"NER_BATCH_SIZE" default:"16"`
+	// NERCacheEntries / NERCacheTTL bound the per-pod cache of what the
+	// model found in a line (keys are SHA-256 digests, never the line): an
+	// entry lives NER_CACHE_TTL from when it was stored, and at
+	// NER_CACHE_ENTRIES the least recently used one makes room. About 200
+	// bytes per entry (500k ≈ 100 MiB). Either 0 turns the cache off.
+	NERCacheEntries int           `envconfig:"NER_CACHE_ENTRIES" default:"500000"`
+	NERCacheTTL     time.Duration `envconfig:"NER_CACHE_TTL" default:"1h"`
 
 	// Presidio
 	AnalyzerURL       string        `envconfig:"PRESIDIO_ANALYZER_URL" default:"http://presidio-analyzer:5001"`
@@ -325,6 +332,9 @@ func (c *Config) Validate() error {
 		}
 		if c.NERBatchSize < 1 {
 			return errors.New("NER_BATCH_SIZE must be >= 1")
+		}
+		if c.NERCacheEntries < 0 || c.NERCacheTTL < 0 {
+			return errors.New("NER_CACHE_ENTRIES and NER_CACHE_TTL must be >= 0 (0 turns the cache off)")
 		}
 		for _, pair := range c.NEREntityLabels {
 			p := strings.TrimSpace(pair)

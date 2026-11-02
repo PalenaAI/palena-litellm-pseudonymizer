@@ -186,6 +186,10 @@ func (h *Handler) effectiveMetadataKey(req GuardrailRequest) string {
 	return h.metadataKey
 }
 
+// statusClientClosedRequest is the de-facto status (nginx 499) for a
+// response whose caller has gone.
+const statusClientClosedRequest = 499
+
 // mapError converts internal errors to the right HTTP status per
 // context/FAILURE_MODES.md.
 func (h *Handler) mapError(w http.ResponseWriter, r *http.Request, err error, phase pseudonymizer.InputType) {
@@ -193,6 +197,15 @@ func (h *Handler) mapError(w http.ResponseWriter, r *http.Request, err error, ph
 	// handled inside the orchestrator (returns NONE). Anything else
 	// here on post-call is unexpected.
 	switch {
+	case errors.Is(err, errs.ErrCallerCanceled):
+		// The caller (gateway timeout, client disconnect) already gave up;
+		// the dependency may be fine. Nobody reads this response.
+		h.logger.LogAttrs(r.Context(), slog.LevelWarn,
+			"caller_canceled",
+			slog.String("phase", string(phase)),
+			slog.String("err", err.Error()),
+		)
+		h.writeError(w, statusClientClosedRequest, errs.ErrCallerCanceled.Error())
 	case errors.Is(err, errs.ErrPresidioUnavailable),
 		errors.Is(err, errs.ErrPresidioMalformed):
 		h.logger.LogAttrs(r.Context(), slog.LevelError,

@@ -29,8 +29,10 @@ resources:
     memory: 64Mi
   limits:
     cpu: "1"
-    # Several config.languages load the language classifier's models (~140Mi).
-    memory: 512Mi
+    # Several config.languages load the language classifier's models (~140Mi);
+    # a full ner.cache takes ~100Mi (500k entries) — the garbage collector
+    # needs room on top. Raise with ner.cache.entries.
+    memory: 768Mi
 
 # ---------------------------------------------------------------------------
 # Guardrail behaviour → PALENA_PSEUDONYMIZER_* env vars. See docs/CONFIG.md.
@@ -172,6 +174,14 @@ ner:
   requestBatchSize: 16
   modelBatchSize: 8
   timeoutSeconds: 10
+  # -- Per-pod cache of what the model found in a line, so a conversation sent
+  #    again every turn only costs model time for its new lines. Keys are
+  #    SHA-256 digests (no text kept); ~200 bytes per entry. An entry lives
+  #    `ttl` from when it was stored; at `entries` the least recently used
+  #    one makes room. `entries: 0` turns it off.
+  cache:
+    entries: 500000
+    ttl: 1h
   # -- CPU threads torch uses; match resources.limits.cpu.
   torchThreads: 2
   resources:
