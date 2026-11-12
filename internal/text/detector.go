@@ -5,10 +5,10 @@ package text
 
 import (
 	"context"
-	"crypto/sha256"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/errs"
 	"github.com/bitkaio/palena-litellm-pseudonymizer/internal/language"
@@ -60,6 +60,12 @@ type NERDetector struct {
 	// Cache, when set, answers lines the model has already seen (see
 	// NERCache); only the others are sent.
 	Cache *NERCache
+	// BatchSize lines go to the service per call (default 16); up to
+	// Parallel calls run at once (default 1). Each call's result is cached as
+	// soon as it returns, so a request the caller abandons still leaves its
+	// finished batches behind for the next attempt.
+	BatchSize int
+	Parallel  int
 
 	// Deny finds the always-pseudonymized terms of the types the span model
 	// serves: those types never reach Presidio, so its deny-list recognizers
@@ -73,17 +79,15 @@ type NERDetector struct {
 }
 
 // spansFor returns the model's spans for every text, parallel to texts:
-// cached lines from the cache, the rest in one call (each distinct text
-// once), which then fill the cache.
+// cached lines from the cache, the rest (each distinct text once) in batches
+// of BatchSize, up to Parallel at a time. A batch is cached as soon as it
+// returns — never only at the end — so when the caller gives up (a gateway
+// timeout on a long conversation) the next attempt only sends what is left.
 func (d *NERDetector) spansFor(ctx context.Context, texts, labels []string) ([][]ner.Span, error) {
 	out := make([][]ner.Span, len(texts))
-	var keys [][sha256.Size]byte
+	scope := ""
 	if d.Cache != nil {
-		scope := strings.Join(labels, "|") + "|" + strconv.FormatFloat(d.Threshold, 'g', -1, 64)
-		keys = make([][sha256.Size]byte, len(texts))
-		for i, t := range texts {
-			keys[i] = nerCacheKey(scope, t)
-		}
+		scope = strings.Join(labels, "|") + "|" + strconv.FormatFloat(d.Threshold, 'g', -1, 64)
 	}
 	var ask []string
 	askOf := map[string]int{} // text → index in ask
@@ -91,7 +95,7 @@ func (d *NERDetector) spansFor(ctx context.Context, texts, labels []string) ([][
 	for i, t := range texts {
 		pending[i] = -1
 		if d.Cache != nil {
-			if spans, ok := d.Cache.get(keys[i]); ok {
+			if spans, ok := d.Cache.get(nerCacheKey(scope, t)); ok {
 				out[i] = fromCached(spans)
 				continue
 			}
@@ -107,23 +111,89 @@ func (d *NERDetector) spansFor(ctx context.Context, texts, labels []string) ([][
 	if len(ask) == 0 {
 		return out, nil
 	}
-	results, err := d.NER.Detect(ctx, ask, labels, d.Threshold)
+	results, err := d.detectBatches(ctx, ask, labels, scope)
 	if err != nil {
 		return nil, err
 	}
-	if len(results) != len(ask) {
-		return nil, errs.Wrap(errs.ErrNERMalformed, "%d results for %d texts", len(results), len(ask))
-	}
 	for i, j := range pending {
-		if j < 0 {
-			continue
-		}
-		out[i] = results[j]
-		if d.Cache != nil {
-			d.Cache.put(keys[i], toCached(results[j], labels))
+		if j >= 0 {
+			out[i] = results[j]
 		}
 	}
 	return out, nil
+}
+
+// detectBatches asks the service for every text in ask, BatchSize per call
+// and up to Parallel calls at once, caching each batch on return. The first
+// failure stops the batches not yet started; finished ones stay cached.
+func (d *NERDetector) detectBatches(ctx context.Context, ask, labels []string, scope string) ([][]ner.Span, error) {
+	size := d.BatchSize
+	if size <= 0 {
+		size = 16
+	}
+	parallel := max(d.Parallel, 1)
+	results := make([][]ner.Span, len(ask))
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var (
+		mu       sync.Mutex
+		firstErr error
+		finished int // batches whose results are in
+		wg       sync.WaitGroup
+	)
+	batches := (len(ask) + size - 1) / size
+	fail := func(err error) {
+		mu.Lock()
+		if firstErr == nil {
+			firstErr = err
+			cancel() // siblings stop; their own errors are not the cause
+		}
+		mu.Unlock()
+	}
+	slots := make(chan struct{}, parallel)
+	for start := 0; start < len(ask); start += size {
+		end := min(start+size, len(ask))
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+		}
+		if ctx.Err() != nil {
+			break // a batch failed, or the caller gave up: start nothing new
+		}
+		wg.Add(1)
+		go func(start, end int) {
+			defer wg.Done()
+			defer func() { <-slots }()
+			batch := ask[start:end]
+			res, err := d.NER.Detect(ctx, batch, labels, d.Threshold)
+			if err == nil && len(res) != len(batch) {
+				err = errs.Wrap(errs.ErrNERMalformed, "%d results for %d texts", len(res), len(batch))
+			}
+			if err != nil {
+				fail(err)
+				return
+			}
+			copy(results[start:end], res)
+			if d.Cache != nil {
+				for k, t := range batch {
+					d.Cache.put(nerCacheKey(scope, t), toCached(res[k], labels))
+				}
+			}
+			mu.Lock()
+			finished++
+			mu.Unlock()
+		}(start, end)
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if finished < batches {
+		// The caller's context ended between batches (no call failed).
+		return nil, errs.SendFailure(ctx, ctx.Err(), errs.ErrNERUnavailable, "ner detect", 0)
+	}
+	return results, nil
 }
 
 func fromCached(spans []cachedSpan) []ner.Span {

@@ -21,6 +21,7 @@ data:
   PALENA_PSEUDONYMIZER_NER_CHUNK_CHARS: {{ .Values.ner.chunkChars | int | quote }}
   PALENA_PSEUDONYMIZER_NER_CHUNK_OVERLAP: {{ .Values.ner.chunkOverlap | int | quote }}
   PALENA_PSEUDONYMIZER_NER_BATCH_SIZE: {{ .Values.ner.requestBatchSize | int | quote }}
+  PALENA_PSEUDONYMIZER_NER_PARALLEL: {{ .Values.ner.parallel | default .Values.ner.replicas | int | quote }}
   PALENA_PSEUDONYMIZER_NER_TIMEOUT_SECONDS: {{ printf "%vs" .Values.ner.timeoutSeconds | quote }}
   PALENA_PSEUDONYMIZER_NER_CACHE_ENTRIES: {{ .Values.ner.cache.entries | int | quote }}
   PALENA_PSEUDONYMIZER_NER_CACHE_TTL: {{ .Values.ner.cache.ttl | quote }}

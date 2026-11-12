@@ -82,6 +82,7 @@ presidio:
 | `config.allowList` | `""` | Terms never pseudonymized. |
 | `config.allowListBuiltin` | `true` | Add the built-in product/tool name list. |
 | `ner.threshold` | `0.9` | Minimum span confidence. |
+| `ner.replicas` / `ner.parallel` | `1` / `0` (= replicas) | NER pods and batches in flight per request. |
 | `ner.cache.entries` / `ner.cache.ttl` | `500000` / `1h` | Cache of lines already analyzed, per pod (~100 MiB full). |
 | `ner.chunkChars` / `ner.chunkOverlap` | `1000` / `150` | Window size for long lines. |
 | `apiKey.enabled` | `false` | Require an `x-api-key` header. |

@@ -71,6 +71,7 @@ After install, `helm` prints the service URL and a ready-to-paste
 | `config.entities` | `PERSON` | ORGANIZATION off by default (product names); LOCATION excluded (geography drift). |
 | `config.allowListBuiltin` | `true` | Built-in product/tool allow-list (no people's names). |
 | `ner.threshold` / `ner.chunkChars` | `0.9` / `1000` | Span confidence; line window size. |
+| `ner.replicas` / `ner.parallel` | `1` / `0` (= replicas) | NER pods, and batches of one request in flight at once. Raise both (and CPU) for long conversations. |
 | `ner.cache.entries` / `ner.cache.ttl` | `500000` / `1h` | Per-pod cache of lines already analyzed (~200 bytes per entry); `0` turns it off. |
 | `ner.resources` | 2Gi / 3Gi | Model needs ~2 Gi. |
 | `config.decomposePersonNames` | `true` | First/last-name sub-mappings. |

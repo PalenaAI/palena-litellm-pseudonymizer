@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`NER_PARALLEL`** (chart `ner.parallel`, default = `ner.replicas`): how many
+  of one request's batches are in flight at once. The NER service runs one
+  inference at a time per pod, so raise `ner.replicas` (and CPU) with it.
+
+### Fixed
+
+- **Long conversations never got through the `ner` engine.** A request's lines
+  were cached only after every batch had come back, so when the caller gave up
+  (Wäg's guardrail timeout on a conversation of several hundred lines) all
+  finished batches were lost, and every later turn started from zero and was
+  cancelled again. Each batch is now cached as soon as it returns, and no new
+  batch starts once the caller has gone, so the next attempt only sends what is
+  left.
+
 ## [0.7.0] - 2026-11-03
 
 ### Added

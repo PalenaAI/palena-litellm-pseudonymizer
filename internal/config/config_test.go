@@ -168,3 +168,16 @@ func TestLoad_NERCache(t *testing.T) {
 	_, err = Load()
 	require.Error(t, err)
 }
+
+func TestLoad_NERParallel(t *testing.T) {
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 1, cfg.NERParallel)
+
+	t.Setenv("PALENA_PSEUDONYMIZER_DETECTION_ENGINE", "ner")
+	for _, bad := range []string{"0", "33"} {
+		t.Setenv("PALENA_PSEUDONYMIZER_NER_PARALLEL", bad)
+		_, err := Load()
+		require.Error(t, err, bad)
+	}
+}

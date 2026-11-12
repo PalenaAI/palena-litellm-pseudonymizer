@@ -102,8 +102,11 @@ default 500000 — about 100 MiB full; `NER_CACHE_TTL`, default 1h): a gateway
 that sends the whole conversation every turn then only costs model time for the
 new lines. Only SHA-256 digests of the lines are kept, never the text.
 
-The model runs on CPU and answers one batch at a time, so the first look at a
-long conversation can take a few seconds. Give the gateway's guardrail call
+The model runs on CPU and answers one batch at a time per pod, so the first look
+at a long conversation (hundreds of lines of pasted logs or code) can take a
+while: send batches in parallel with `NER_PARALLEL` and run as many NER replicas.
+Each batch is cached as soon as it returns, so a request the gateway gives up on
+still leaves its progress for the next turn. Give the gateway's guardrail call
 enough time (in Wäg: the guardrail item's `timeout_ms`, default 2500 — 10000 or
 more is safer); a caller that gives up mid-call is logged as `caller_canceled`,
 not as the NER service being down.

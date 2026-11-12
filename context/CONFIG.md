@@ -31,7 +31,8 @@ config — never boot into a half-configured state.
 | `PALENA_PSEUDONYMIZER_NER_ENTITY_LABELS` | `PERSON:person\|full_name\|first_name\|last_name,ORGANIZATION:organization` | `TYPE:label\|label,…`. |
 | `PALENA_PSEUDONYMIZER_NER_CHUNK_CHARS` | `1000` | ≥ 100. |
 | `PALENA_PSEUDONYMIZER_NER_CHUNK_OVERLAP` | `150` | `0 ≤ overlap < chunk / 2`. |
-| `PALENA_PSEUDONYMIZER_NER_BATCH_SIZE` | `16` | ≥ 1. |
+| `PALENA_PSEUDONYMIZER_NER_BATCH_SIZE` | `16` | ≥ 1. `NERDetector.detectBatches` sends the missing lines in batches of this size and caches each batch on return (a cancelled request keeps its finished batches). |
+| `PALENA_PSEUDONYMIZER_NER_PARALLEL` | `1` | 1–32 batches in flight; first failure stops the rest, no new batch after the caller cancelled. |
 | `PALENA_PSEUDONYMIZER_NER_CACHE_ENTRIES` | `500000` | ≥ 0; `0` = no cache. `text.NERCache`: LRU + TTL, SHA-256 keys over labels, threshold and the line, spans only (no text). |
 | `PALENA_PSEUDONYMIZER_NER_CACHE_TTL` | `1h` | ≥ 0; counted from when the entry was stored, reads do not extend it. |
 

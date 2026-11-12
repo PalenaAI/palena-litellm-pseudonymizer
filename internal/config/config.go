@@ -58,6 +58,10 @@ type Config struct {
 	NERChunkOverlap int `envconfig:"NER_CHUNK_OVERLAP" default:"150"`
 	// NERBatchSize caps the texts sent to the NER service per HTTP call.
 	NERBatchSize int `envconfig:"NER_BATCH_SIZE" default:"16"`
+	// NERParallel is how many of one request's batches are in flight at
+	// once. The NER service runs one inference at a time per pod, so more
+	// than its replica count only queues there.
+	NERParallel int `envconfig:"NER_PARALLEL" default:"1"`
 	// NERCacheEntries / NERCacheTTL bound the per-pod cache of what the
 	// model found in a line (keys are SHA-256 digests, never the line): an
 	// entry lives NER_CACHE_TTL from when it was stored, and at
@@ -332,6 +336,9 @@ func (c *Config) Validate() error {
 		}
 		if c.NERBatchSize < 1 {
 			return errors.New("NER_BATCH_SIZE must be >= 1")
+		}
+		if c.NERParallel < 1 || c.NERParallel > 32 {
+			return errors.New("NER_PARALLEL must be between 1 and 32")
 		}
 		if c.NERCacheEntries < 0 || c.NERCacheTTL < 0 {
 			return errors.New("NER_CACHE_ENTRIES and NER_CACHE_TTL must be >= 0 (0 turns the cache off)")

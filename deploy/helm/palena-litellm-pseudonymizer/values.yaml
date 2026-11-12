@@ -172,6 +172,10 @@ ner:
   chunkOverlap: 150
   # -- Texts per HTTP call from the pseudonymizer / per forward pass in the model.
   requestBatchSize: 16
+  # -- Batches of one request in flight at once (0 = ner.replicas). The NER
+  #    service runs one inference at a time per pod, so more than its replicas
+  #    only queues there. Raise replicas (and CPU) for long conversations.
+  parallel: 0
   modelBatchSize: 8
   timeoutSeconds: 10
   # -- Per-pod cache of what the model found in a line, so a conversation sent

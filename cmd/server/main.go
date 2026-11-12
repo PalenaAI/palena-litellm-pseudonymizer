@@ -111,6 +111,8 @@ func run() error {
 		detector = &text.NERDetector{
 			NER:             client,
 			Cache:           nerCache,
+			BatchSize:       cfg.NERBatchSize,
+			Parallel:        cfg.NERParallel,
 			Labels:          labels,
 			Deny:            deny,
 			Threshold:       nerMin,
@@ -122,7 +124,8 @@ func run() error {
 		}
 		logger.Info("detection engine: ner", "ner_url", cfg.NERURL, "ner_entities", uniqueValues(labels),
 			"pattern_entities", patternEntities, "pattern_language", cfg.Language,
-			"ner_cache_entries", cfg.NERCacheEntries, "ner_cache_ttl", cfg.NERCacheTTL.String())
+			"ner_cache_entries", cfg.NERCacheEntries, "ner_cache_ttl", cfg.NERCacheTTL.String(),
+			"ner_batch_size", cfg.NERBatchSize, "ner_parallel", cfg.NERParallel)
 	}
 
 	// Text handler
