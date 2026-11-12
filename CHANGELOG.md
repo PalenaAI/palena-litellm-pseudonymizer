@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-12
+
 ### Added
 
 - **`NER_PARALLEL`** (chart `ner.parallel`, default = `ner.replicas`): how many
@@ -314,7 +316,8 @@ Initial release.
   scanning with SBOM, cosign keyless signing, SLSA Level 3 provenance, and
   OpenSSF Scorecard.
 
-[Unreleased]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/PalenaAI/palena-litellm-pseudonymizer/compare/v0.5.0...v0.6.0
